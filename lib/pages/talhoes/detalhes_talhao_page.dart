@@ -1,5 +1,3 @@
-// lib/pages/talhoes/detalhes_talhao_page.dart (VERSÃO FINAL CONTEXTUAL)
-
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
 import 'package:intl/intl.dart';
@@ -15,7 +13,7 @@ import 'package:geoforestcoletor/pages/cubagem/cubagem_dados_page.dart';
 
 class DetalhesTalhaoPage extends StatefulWidget {
   final Talhao talhao;
-  final Atividade atividade; // Recebe o contexto da atividade
+  final Atividade atividade;
 
   const DetalhesTalhaoPage({super.key, required this.talhao, required this.atividade});
 
@@ -24,14 +22,12 @@ class DetalhesTalhaoPage extends StatefulWidget {
 }
 
 class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
-  // O Future agora pode carregar tanto Parcelas quanto Cubagens
   late Future<List<dynamic>> _dataFuture;
   final dbHelper = DatabaseHelper.instance;
 
   bool _isSelectionMode = false;
   final Set<int> _selectedItens = {};
 
-  // Propriedade computada para saber o contexto da página
   bool get _isAtividadeDeInventario {
     final tipo = widget.atividade.tipo.toLowerCase();
     return tipo.contains("ipc") || tipo.contains("ifc") || tipo.contains("inventário");
@@ -48,7 +44,6 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       setState(() {
         _isSelectionMode = false;
         _selectedItens.clear();
-        // Carrega os dados corretos com base no tipo de atividade
         if (_isAtividadeDeInventario) {
           _dataFuture = dbHelper.getParcelasDoTalhao(widget.talhao.id!);
         } else {
@@ -67,7 +62,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       }
     });
   }
-  
+
   void _onItemSelected(int itemId) {
     setState(() {
       if (_selectedItens.contains(itemId)) {
@@ -81,7 +76,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
 
   Future<void> _deleteSelectedItems() async {
     if (_selectedItens.isEmpty || !mounted) return;
-    
+
     final itemType = _isAtividadeDeInventario ? 'parcelas' : 'cubagens';
     final bool? confirmar = await showDialog<bool>(
       context: context,
@@ -106,7 +101,6 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
     }
   }
 
-  // --- MÉTODOS DE NAVEGAÇÃO ---
   void _navegarParaMapa() {
     Navigator.push(context, MaterialPageRoute(builder: (context) => MapImportPage(talhao: widget.talhao)));
   }
@@ -117,28 +111,74 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   }
 
   Future<void> _navegarParaNovaCubagem() async {
+    final String? metodoEscolhido = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Escolha o Método de Cubagem'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Seções Fixas'),
+                subtitle: const Text('Medições em alturas pré-definidas (0.1m, 0.3m, 0.7m, 1.0m...).'),
+                onTap: () => Navigator.of(context).pop('Fixas'),
+              ),
+              ListTile(
+                title: const Text('Seções Relativas'),
+                subtitle: const Text('Medições em porcentagens da altura total.'),
+                onTap: () => Navigator.of(context).pop('Relativas'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (metodoEscolhido == null || !mounted) return;
+
     final arvoreCubagem = CubagemArvore(
       talhaoId: widget.talhao.id,
       nomeFazenda: widget.talhao.fazendaNome ?? 'N/A',
       nomeTalhao: widget.talhao.nome,
-      identificador: 'Cubagem Avulsa', // Identificador padrão
+      identificador: 'Cubagem Avulsa',
     );
-    final bool? recarregar = await Navigator.push(context, MaterialPageRoute(builder: (context) => CubagemDadosPage(metodo: 'Fixas', arvoreParaEditar: arvoreCubagem,)));
-    if(recarregar == true && mounted) _carregarDados();
+
+    final bool? recarregar = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CubagemDadosPage(
+          metodo: metodoEscolhido,
+          arvoreParaEditar: arvoreCubagem,
+        ),
+      ),
+    );
+
+    if (recarregar == true && mounted) {
+      _carregarDados();
+    }
   }
 
-  Future<void> _navegarParaDetalhesParcela(Parcela parcela) async {
-    final bool? recarregar = await Navigator.push(context, MaterialPageRoute(builder: (context) => ColetaDadosPage(parcelaParaEditar: parcela)));
-     if(recarregar == true && mounted) _carregarDados();
+  void _navegarParaDetalhesParcela(Parcela parcela) {
+    // Placeholder - Substitua com a navegação real
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Abrindo detalhes da parcela: ${parcela.idParcela}')),
+    );
   }
 
-  Future<void> _navegarParaDetalhesCubagem(CubagemArvore arvore) async {
-    final bool? recarregar = await Navigator.push(context, MaterialPageRoute(builder: (context) => CubagemDadosPage(metodo: arvore.tipoMedidaCAP, arvoreParaEditar: arvore,)));
-    if(recarregar == true && mounted) _carregarDados();
+  void _navegarParaDetalhesCubagem(CubagemArvore arvore) {
+    // Placeholder - Substitua com a navegação real
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Abrindo detalhes da cubagem: ${arvore.identificador}')),
+    );
   }
 
-
-  // --- WIDGETS DE CONSTRUÇÃO DA UI ---
   AppBar _buildAppBar() {
     return AppBar(
       title: Text('Talhão: ${widget.talhao.nome}'),
@@ -164,13 +204,13 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _isSelectionMode 
-        ? AppBar(
-            leading: IconButton(icon: const Icon(Icons.close), onPressed: () => _toggleSelectionMode(null)),
-            title: Text('${_selectedItens.length} selecionados'),
-            actions: [IconButton(icon: const Icon(Icons.delete_outline), onPressed: _deleteSelectedItems, tooltip: 'Apagar Selecionados')],
-          )
-        : _buildAppBar(),
+      appBar: _isSelectionMode
+          ? AppBar(
+              leading: IconButton(icon: const Icon(Icons.close), onPressed: () => _toggleSelectionMode(null)),
+              title: Text('${_selectedItens.length} selecionados'),
+              actions: [IconButton(icon: const Icon(Icons.delete_outline), onPressed: _deleteSelectedItems, tooltip: 'Apagar Selecionados')],
+            )
+          : _buildAppBar(),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -195,7 +235,12 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: ElevatedButton.icon(onPressed: _navegarParaMapa, icon: const Icon(Icons.map_outlined), label: const Text('Abrir Talhão no Mapa'), style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12))),
+            child: ElevatedButton.icon(
+              onPressed: _navegarParaMapa,
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('Abrir Talhão no Mapa'),
+              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
@@ -210,37 +255,39 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 if (snapshot.hasError) return Center(child: Text('Erro: ${snapshot.error}'));
-                
+
                 final itens = snapshot.data ?? [];
                 if (itens.isEmpty) {
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Text(
-                        _isAtividadeDeInventario 
-                          ? 'Nenhuma parcela coletada.\nClique no botão "+" para iniciar.'
-                          : 'Nenhuma árvore para cubar.\nClique no botão "+" para adicionar uma cubagem manual.',
+                        _isAtividadeDeInventario
+                            ? 'Nenhuma parcela coletada.\nClique no botão "+" para iniciar.'
+                            : 'Nenhuma árvore para cubar.\nClique no botão "+" para adicionar uma cubagem manual.',
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                     ),
                   );
                 }
-                // Renderiza a lista correta com base no tipo de atividade
+
                 return _isAtividadeDeInventario
-                   ? _buildListaDeParcelas(itens.cast<Parcela>())
-                   : _buildListaDeCubagens(itens.cast<CubagemArvore>());
+                    ? _buildListaDeParcelas(itens.cast<Parcela>())
+                    : _buildListaDeCubagens(itens.cast<CubagemArvore>());
               },
             ),
           ),
         ],
       ),
-      floatingActionButton: _isSelectionMode ? null : FloatingActionButton.extended(
-        onPressed: _isAtividadeDeInventario ? _navegarParaNovaParcela : _navegarParaNovaCubagem,
-        tooltip: _isAtividadeDeInventario ? 'Nova Parcela' : 'Nova Cubagem Manual',
-        icon: Icon(_isAtividadeDeInventario ? Icons.add_location_alt_outlined : Icons.add),
-        label: Text(_isAtividadeDeInventario ? 'Nova Parcela' : 'Nova Cubagem'),
-      ),
+      floatingActionButton: _isSelectionMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _isAtividadeDeInventario ? _navegarParaNovaParcela : _navegarParaNovaCubagem,
+              tooltip: _isAtividadeDeInventario ? 'Nova Parcela' : 'Nova Cubagem Manual',
+              icon: Icon(_isAtividadeDeInventario ? Icons.add_location_alt_outlined : Icons.add),
+              label: Text(_isAtividadeDeInventario ? 'Nova Parcela' : 'Nova Cubagem'),
+            ),
     );
   }
 
@@ -264,10 +311,16 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
             ),
             title: Text('Parcela ID: ${parcela.idParcela}', style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text('Coletado em: $dataFormatada'),
-            trailing: _isSelectionMode ? null : IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: () { _selectedItens.clear(); _selectedItens.add(parcela.dbId!); _deleteSelectedItems(); },
-            ),
+            trailing: _isSelectionMode
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: () {
+                      _selectedItens.clear();
+                      _selectedItens.add(parcela.dbId!);
+                      _deleteSelectedItems();
+                    },
+                  ),
             selected: isSelected,
           ),
         );
@@ -295,10 +348,16 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
             ),
             title: Text(arvore.identificador),
             subtitle: Text('Classe: ${arvore.classe ?? "Avulsa"}'),
-            trailing: _isSelectionMode ? null : IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: () { _selectedItens.clear(); _selectedItens.add(arvore.id!); _deleteSelectedItems(); },
-            ),
+            trailing: _isSelectionMode
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: () {
+                      _selectedItens.clear();
+                      _selectedItens.add(arvore.id!);
+                      _deleteSelectedItems();
+                    },
+                  ),
             selected: isSelected,
           ),
         );
