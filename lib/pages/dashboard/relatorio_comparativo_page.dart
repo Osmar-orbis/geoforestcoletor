@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/dashboard/talhao_dashboard_page.dart';
-import 'package:geoforestcoletor/services/export_service.dart';
 import 'package:geoforestcoletor/services/pdf_service.dart';
 import 'package:geoforestcoletor/models/enums.dart';
 import 'package:geoforestcoletor/services/analysis_service.dart';
@@ -22,14 +21,6 @@ class PlanoConfig {
   });
 }
 
-enum ExportOptions {
-  exportarTudo,
-  exportarParcelas,
-  exportarCubagens,
-  exportarAnalisesPdf,
-  exportarAmostrasGeoJson
-}
-
 class RelatorioComparativoPage extends StatefulWidget {
   final List<Talhao> talhoesSelecionados;
   const RelatorioComparativoPage({super.key, required this.talhoesSelecionados});
@@ -41,7 +32,6 @@ class RelatorioComparativoPage extends StatefulWidget {
 class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
   final Map<String, List<Talhao>> _talhoesPorFazenda = {};
   final dbHelper = DatabaseHelper.instance;
-  final exportService = ExportService();
   final pdfService = PdfService();
 
   @override
@@ -60,8 +50,22 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
     }
   }
 
-  Future<void> _handleExportSelection(ExportOptions option) async {
-    // ... seu código de exportação ...
+  Future<void> _exportarAnaliseUnificadaPdf() async {
+    if (widget.talhoesSelecionados.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nenhum talhão para exportar.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+    await pdfService.gerarRelatorioUnificadoPdf(
+      context: context,
+      talhoes: widget.talhoesSelecionados,
+    );
   }
 
   Future<PlanoConfig?> _mostrarDialogoDeConfiguracaoLote() async {
@@ -157,31 +161,49 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
     );
   }
   
+  // <<< FUNÇÃO PRINCIPAL MODIFICADA >>>
   Future<void> _gerarPlanosDeCubagemParaSelecionados() async {
     final PlanoConfig? config = await _mostrarDialogoDeConfiguracaoLote();
     if (config == null || !mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Iniciando geração de ${widget.talhoesSelecionados.length} planos...'),
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Gerando atividades e planos no banco de dados...'),
       backgroundColor: Colors.blue,
-      duration: const Duration(seconds: 15),
+      duration: Duration(seconds: 15),
     ));
     
     final analysisService = AnalysisService();
     try {
-      await analysisService.criarMultiplasAtividadesDeCubagem(
+      // 1. CHAMA A FUNÇÃO E AGUARDA O RETORNO DOS PLANOS GERADOS
+      final planosGerados = await analysisService.criarMultiplasAtividadesDeCubagem(
         talhoes: widget.talhoesSelecionados,
         metodo: config.metodoDistribuicao,
         quantidade: config.quantidade,
         metodoCubagem: config.metodoCubagem,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).removeCurrentSnackBar();
+
+      if (planosGerados.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Atividades de cubagem geradas com sucesso!'),
-          backgroundColor: Colors.green,
+          content: Text('Nenhum plano foi gerado. Verifique os dados dos talhões.'),
+          backgroundColor: Colors.orange,
         ));
+        return;
       }
+      
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Atividades criadas! Gerando PDF dos planos...'),
+        backgroundColor: Colors.green,
+      ));
+
+      // 2. PASSA OS PLANOS GERADOS PARA O PDF SERVICE
+      await pdfService.gerarPdfUnificadoDePlanosDeCubagem(
+        context: context, 
+        planosPorTalhao: planosGerados,
+      );
+
     } catch (e) {
        if (mounted) {
         ScaffoldMessenger.of(context).removeCurrentSnackBar();
@@ -199,18 +221,10 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
       appBar: AppBar(
         title: const Text('Relatório Comparativo'),
         actions: [
-          PopupMenuButton<ExportOptions>(
-            onSelected: _handleExportSelection,
-            icon: const Icon(Icons.download_outlined),
-            tooltip: 'Exportar Dados Analisados',
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<ExportOptions>>[
-              const PopupMenuItem<ExportOptions>(value: ExportOptions.exportarTudo, child: ListTile(leading: Icon(Icons.archive_outlined), title: Text('Exportar Tudo (.zip)'))),
-              const PopupMenuDivider(),
-              const PopupMenuItem<ExportOptions>(value: ExportOptions.exportarParcelas, child: ListTile(leading: Icon(Icons.table_rows_outlined), title: Text('Exportar Parcelas (CSV)'))),
-              const PopupMenuItem<ExportOptions>(value: ExportOptions.exportarAmostrasGeoJson, child: ListTile(leading: Icon(Icons.map_outlined), title: Text('Exportar Amostras (GeoJSON)'))),
-              const PopupMenuItem<ExportOptions>(value: ExportOptions.exportarCubagens, child: ListTile(leading: Icon(Icons.architecture_outlined), title: Text('Exportar Cubagens (CSV)'))),
-              const PopupMenuItem<ExportOptions>(value: ExportOptions.exportarAnalisesPdf, child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('Exportar Análises (PDF Unificado)'))),
-            ],
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            onPressed: _exportarAnaliseUnificadaPdf,
+            tooltip: 'Exportar Análises (PDF Unificado)',
           ),
         ],
       ),
@@ -243,11 +257,14 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
           );
         },
       ),
+      // <<< BOTÃO FLUTUANTE COM O ESTILO DO BOTÃO VERMELHO >>>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _gerarPlanosDeCubagemParaSelecionados,
-        icon: const Icon(Icons.playlist_add_check_outlined),
+        icon: const Icon(Icons.picture_as_pdf_outlined), // Ícone de PDF
         label: const Text('Gerar Planos de Cubagem'),
         tooltip: 'Gerar planos de cubagem para os talhões selecionados',
+        backgroundColor: Theme.of(context).colorScheme.error, // Cor vermelha do tema
+        foregroundColor: Colors.white, // Cor do texto e ícone
       ),
     );
   }

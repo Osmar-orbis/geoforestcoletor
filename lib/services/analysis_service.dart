@@ -1,6 +1,7 @@
 // lib/services/analysis_service.dart
 
 import 'dart:math';
+import 'package:flutter/foundation.dart'; // <<< ADICIONADO PARA O DEBUGPRINT
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
@@ -13,8 +14,6 @@ import 'package:geoforestcoletor/models/analise_result_model.dart';
 class AnalysisService {
   static const double FATOR_DE_FORMA = 0.45;
 
-  // --- MÉTODOS DE ANÁLISE EXISTENTES (sem alterações) ---
-
   TalhaoAnalysisResult getTalhaoInsights(List<Parcela> parcelasDoTalhao, List<Arvore> todasAsArvores) {
     if (parcelasDoTalhao.isEmpty || todasAsArvores.isEmpty) {
       return TalhaoAnalysisResult();
@@ -23,10 +22,8 @@ class AnalysisService {
     final double areaTotalAmostradaM2 = parcelasDoTalhao.map((p) => p.areaMetrosQuadrados).reduce((a, b) => a + b);
     if (areaTotalAmostradaM2 == 0) return TalhaoAnalysisResult();
     
-    // A variável é definida aqui
     final double areaTotalAmostradaHa = areaTotalAmostradaM2 / 10000;
 
-    // E passada como parâmetro para o método interno
     return _analisarListaDeArvores(todasAsArvores, areaTotalAmostradaHa, parcelasDoTalhao.length);
   }
 
@@ -46,12 +43,12 @@ class AnalysisService {
     final double mediaAltura = alturasValidas.isNotEmpty ? _calculateAverage(alturasValidas) : 0.0;
     
     final double areaBasalTotalAmostrada = arvoresVivas.map((a) => _areaBasalPorArvore(a.cap)).reduce((a, b) => a + b);
-    final double areaBasalPorHectare = areaBasalTotalAmostrada / areaAmostradaHa; // Usada aqui
+    final double areaBasalPorHectare = areaBasalTotalAmostrada / areaAmostradaHa;
 
     final double volumeTotalAmostrado = arvoresVivas.map((a) => _estimateVolume(a.cap, a.altura ?? mediaAltura)).reduce((a, b) => a + b);
-    final double volumePorHectare = volumeTotalAmostrado / areaAmostradaHa; // Usada aqui
+    final double volumePorHectare = volumeTotalAmostrado / areaAmostradaHa;
     
-    final int arvoresPorHectare = (arvoresVivas.length / areaAmostradaHa).round(); // Usada aqui
+    final int arvoresPorHectare = (arvoresVivas.length / areaAmostradaHa).round();
 
     List<String> warnings = [];
     List<String> insights = [];
@@ -256,16 +253,16 @@ class AnalysisService {
     return numbers.reduce((a, b) => a + b) / numbers.length;
   }
 
-  // --- MÉTODOS NOVOS PARA CRIAÇÃO DE ATIVIDADE DE CUBAGEM ---
-
-  Future<void> criarMultiplasAtividadesDeCubagem({
+  Future<Map<Talhao, Map<String, int>>> criarMultiplasAtividadesDeCubagem({
     required List<Talhao> talhoes,
     required MetodoDistribuicaoCubagem metodo,
     required int quantidade,
-    required String metodoCubagem, // Parâmetro novo
+    required String metodoCubagem,
   }) async {
     final dbHelper = DatabaseHelper.instance;
-    Map<int, int> quantidadesPorTalhao = {};
+    final Map<int, int> quantidadesPorTalhao = {};
+    
+    final Map<Talhao, Map<String, int>> planosGerados = {};
 
     if (metodo == MetodoDistribuicaoCubagem.fixoPorTalhao) {
       for (final talhao in talhoes) {
@@ -303,55 +300,49 @@ class AnalysisService {
       
       final analiseResult = getTalhaoInsights(parcelas, arvores);
       
-      await criarAtividadeDeCubagemPorPlano(
-        talhaoOriginal: talhao,
-        analiseOriginal: analiseResult,
-        totalArvoresParaCubar: totalArvoresParaCubar,
-        metodoCubagem: metodoCubagem, // Passa o parâmetro adiante
-      );
-    }
-  }
-
-  Future<void> criarAtividadeDeCubagemPorPlano({
-    required Talhao talhaoOriginal,
-    required TalhaoAnalysisResult analiseOriginal,
-    required int totalArvoresParaCubar,
-    required String metodoCubagem, // Parâmetro novo
-  }) async {
-    final dbHelper = DatabaseHelper.instance;
-    final projeto = await dbHelper.getProjetoPelaAtividade(talhaoOriginal.fazendaAtividadeId);
-    if (projeto == null) throw Exception("Não foi possível encontrar o projeto pai para o talhão ${talhaoOriginal.nome}.");
-    
-    final plano = gerarPlanoDeCubagem(analiseOriginal.distribuicaoDiametrica, analiseOriginal.totalArvoresAmostradas, totalArvoresParaCubar);
-    if (plano.isEmpty) throw Exception("Não foi possível gerar o plano de cubagem para o talhão ${talhaoOriginal.nome}.");
-
-    final novaAtividade = Atividade(
-      projetoId: projeto.id!,
-      tipo: 'Cubagem - $metodoCubagem', // Tipo da atividade agora reflete o método
-      descricao: 'Plano para o talhão ${talhaoOriginal.nome} com $totalArvoresParaCubar árvores.',
-      dataCriacao: DateTime.now(),
-    );
-
-    final List<CubagemArvore> placeholders = [];
-    plano.forEach((classe, quantidade) {
-      for (int i = 1; i <= quantidade; i++) {
-        final classeSanitizada = classe.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '-');
-        placeholders.add(
-          CubagemArvore(
-            nomeFazenda: talhaoOriginal.fazendaNome ?? 'N/A',
-            idFazenda: talhaoOriginal.fazendaId,
-            nomeTalhao: talhaoOriginal.nome,
-            classe: classe,
-            identificador: 'PLANO-${classeSanitizada}-${i.toString().padLeft(2, '0')}',
-            alturaTotal: 0,
-            valorCAP: 0,
-            alturaBase: 1.30,
-            tipoMedidaCAP: 'fita',
-          ),
-        );
+      final projeto = await dbHelper.getProjetoPelaAtividade(talhao.fazendaAtividadeId);
+      if (projeto == null) {
+        debugPrint("Aviso: Não foi possível encontrar o projeto pai para o talhão ${talhao.nome}. Pulando.");
+        continue;
+      };
+      
+      final plano = gerarPlanoDeCubagem(analiseResult.distribuicaoDiametrica, analiseResult.totalArvoresAmostradas, totalArvoresParaCubar);
+      if (plano.isEmpty) {
+        debugPrint("Aviso: Não foi possível gerar o plano de cubagem para o talhão ${talhao.nome}. Pulando.");
+        continue;
       }
-    });
+      
+      planosGerados[talhao] = plano;
 
-    await dbHelper.criarAtividadeComPlanoDeCubagem(novaAtividade, placeholders);
+      final novaAtividade = Atividade(
+        projetoId: projeto.id!,
+        tipo: 'Cubagem - $metodoCubagem',
+        descricao: 'Plano para o talhão ${talhao.nome} com $totalArvoresParaCubar árvores.',
+        dataCriacao: DateTime.now(),
+      );
+
+      final List<CubagemArvore> placeholders = [];
+      plano.forEach((classe, quantidade) {
+        for (int i = 1; i <= quantidade; i++) {
+          final classeSanitizada = classe.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '-');
+          placeholders.add(
+            CubagemArvore(
+              nomeFazenda: talhao.fazendaNome ?? 'N/A',
+              idFazenda: talhao.fazendaId,
+              nomeTalhao: talhao.nome,
+              classe: classe,
+              identificador: 'PLANO-${classeSanitizada}-${i.toString().padLeft(2, '0')}',
+              alturaTotal: 0,
+              valorCAP: 0,
+              alturaBase: 1.30,
+              tipoMedidaCAP: 'fita',
+            ),
+          );
+        }
+      });
+      await dbHelper.criarAtividadeComPlanoDeCubagem(novaAtividade, placeholders);
+    }
+    
+    return planosGerados;
   }
 }

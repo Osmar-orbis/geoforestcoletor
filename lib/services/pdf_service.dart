@@ -83,6 +83,45 @@ class PdfService {
     }
   }
 
+  Future<void> gerarRelatorioSimulacaoPdf({
+    required BuildContext context,
+    required String nomeFazenda,
+    required String nomeTalhao,
+    required double intensidade,
+    required TalhaoAnalysisResult analiseInicial,
+    required TalhaoAnalysisResult resultadoSimulacao,
+  }) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (pw.Context ctx) => _buildHeader(nomeFazenda, nomeTalhao),
+        footer: (pw.Context ctx) => _buildFooter(),
+        build: (pw.Context ctx) {
+          return [
+            pw.Text(
+              'Relatório de Simulação de Desbaste',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16),
+              textAlign: pw.TextAlign.center,
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              'Intensidade Aplicada: ${intensidade.toStringAsFixed(0)}%',
+              style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700),
+              textAlign: pw.TextAlign.center,
+            ),
+            pw.Divider(height: 20),
+            _buildTabelaSimulacaoPdf(analiseInicial, resultadoSimulacao),
+          ];
+        },
+      ),
+    );
+
+    final nomeArquivo = 'Simulacao_Desbaste_${nomeTalhao.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.pdf';
+    await _salvarEAbriPdf(context, pdf, nomeArquivo);
+  }
+
   Future<void> gerarRelatorioAnalisePdf(Talhao talhao, TalhaoAnalysisResult analise, String diretorioDeSaida) async {
     final pdf = pw.Document();
     pdf.addPage(
@@ -179,7 +218,50 @@ class PdfService {
     final nomeArquivo = 'Relatorio_Comparativo_GeoForest_${DateFormat('yyyy-MM-dd_HH-mm').format(hoje)}.pdf';
     await _salvarEAbriPdf(context, pdf, nomeArquivo);
   }
+  
+  // >>>>>>>>> FUNÇÃO ADICIONADA AQUI <<<<<<<<<<<<<<<
+  Future<void> gerarPdfUnificadoDePlanosDeCubagem({
+    required BuildContext context,
+    required Map<Talhao, Map<String, int>> planosPorTalhao,
+  }) async {
+    if (planosPorTalhao.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum plano para gerar PDF.')));
+      return;
+    }
 
+    final pdf = pw.Document();
+
+    for (var entry in planosPorTalhao.entries) {
+      final talhao = entry.key;
+      final plano = entry.value;
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          header: (pw.Context ctx) => _buildHeader(talhao.fazendaNome ?? 'N/A', talhao.nome),
+          footer: (pw.Context ctx) => _buildFooter(),
+          build: (pw.Context ctx) {
+            return [
+              pw.SizedBox(height: 20),
+              pw.Text(
+                'Plano de Cubagem Estratificada por Classe Diamétrica',
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16),
+                textAlign: pw.TextAlign.center,
+              ),
+              pw.Divider(height: 20),
+              _buildTabelaPlano(plano),
+            ];
+          },
+        ),
+      );
+    }
+    
+    final hoje = DateTime.now();
+    final nomeArquivo = 'Planos_de_Cubagem_GeoForest_${DateFormat('yyyy-MM-dd_HH-mm').format(hoje)}.pdf';
+    await _salvarEAbriPdf(context, pdf, nomeArquivo);
+  }
+
+  // >>>>>>>>> ESTA É A FUNÇÃO QUE FOI CORRIGIDA (VOLTOU AO NOME ORIGINAL) <<<<<<<<<<<<<<<
   Future<void> gerarPlanoCubagemPdf({
     required BuildContext context,
     required String nomeFazenda,
@@ -210,6 +292,7 @@ class PdfService {
         'plano_cubagem_${nomeTalhao.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.pdf');
   }
 
+  // >>>>>>>>> E ESTA É A FUNÇÃO QUE ESTAVA COM O NOME ERRADO ANTES <<<<<<<<<<<
   Future<void> gerarRelatorioRendimentoPdf({
     required BuildContext context,
     required String nomeFazenda,
@@ -424,6 +507,29 @@ class PdfService {
           );
         }),
       ],
+    );
+  }
+
+  pw.Widget _buildTabelaSimulacaoPdf(TalhaoAnalysisResult antes, TalhaoAnalysisResult depois) {
+    final headers = ['Parâmetro', 'Antes', 'Após'];
+    
+    final data = [
+      ['Árvores/ha', antes.arvoresPorHectare.toString(), depois.arvoresPorHectare.toString()],
+      ['CAP Médio', '${antes.mediaCap.toStringAsFixed(1)} cm', '${depois.mediaCap.toStringAsFixed(1)} cm'],
+      ['Altura Média', '${antes.mediaAltura.toStringAsFixed(1)} m', '${depois.mediaAltura.toStringAsFixed(1)} m'],
+      ['Área Basal (G)', '${antes.areaBasalPorHectare.toStringAsFixed(2)} m²/ha', '${depois.areaBasalPorHectare.toStringAsFixed(2)} m²/ha'],
+      ['Volume', '${antes.volumePorHectare.toStringAsFixed(2)} m³/ha', '${depois.volumePorHectare.toStringAsFixed(2)} m³/ha'],
+    ];
+
+    return pw.TableHelper.fromTextArray(
+      headers: headers,
+      data: data,
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey700),
+      cellAlignment: pw.Alignment.center,
+      cellAlignments: {0: pw.Alignment.centerLeft},
+      cellStyle: const pw.TextStyle(fontSize: 11),
+      border: pw.TableBorder.all(color: PdfColors.grey),
     );
   }
 }

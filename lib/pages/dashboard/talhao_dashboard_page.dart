@@ -7,7 +7,6 @@ import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/services/analysis_service.dart';
 import 'package:geoforestcoletor/services/export_service.dart';
-import 'package:geoforestcoletor/services/pdf_service.dart';
 import 'package:geoforestcoletor/widgets/grafico_distribuicao_widget.dart';
 import 'package:geoforestcoletor/pages/analises/simulacao_desbaste_page.dart';
 import 'package:geoforestcoletor/pages/analises/rendimento_dap_page.dart';
@@ -60,7 +59,6 @@ class TalhaoDashboardContent extends StatefulWidget {
 class _TalhaoDashboardContentState extends State<TalhaoDashboardContent> {
   final _dbHelper = DatabaseHelper.instance;
   final _analysisService = AnalysisService();
-  final _pdfService = PdfService();
   final _exportService = ExportService();
 
   List<Parcela> _parcelasDoTalhao = [];
@@ -159,89 +157,8 @@ class _TalhaoDashboardContentState extends State<TalhaoDashboardContent> {
     );
   }
 
-  void _gerarPlanoDeCubagemPdf() async {
-    if (_analysisResult == null || _analysisResult!.totalArvoresAmostradas == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Dados de análise insuficientes para gerar o plano.")),
-      );
-      return;
-    }
-
-    final String? totalParaCubarStr = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        final controller = TextEditingController();
-        final List<int> valoresSugeridos = [10, 20, 30, 50, 100];
-        final totalAmostradas = _analysisResult!.totalArvoresAmostradas;
-
-        return AlertDialog(
-          title: const Text('Definir Plano de Cubagem'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Total de árvores medidas: $totalAmostradas',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
-                const Text('Sugestões:'),
-                Wrap(
-                  spacing: 8.0,
-                  children: valoresSugeridos
-                      .where((valor) => valor < totalAmostradas)
-                      .map((valor) => OutlinedButton(
-                            child: Text(valor.toString()),
-                            onPressed: () {
-                              controller.text = valor.toString();
-                            },
-                          ))
-                      .toList(),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Nº de árvores para cubar',
-                    hintText: 'Ou digite um valor',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(controller.text),
-              child: const Text('Gerar PDF'),
-            ),
-          ],
-        );
-      },
-    );
-
-    final int? totalParaCubar = int.tryParse(totalParaCubarStr ?? '');
-    if (totalParaCubar == null || totalParaCubar <= 0) return;
-
-    final plano = _analysisService.gerarPlanoDeCubagem(
-      _analysisResult!.distribuicaoDiametrica,
-      _analysisResult!.totalArvoresAmostradas,
-      totalParaCubar,
-    );
-    
-    if (!mounted) return;
-
-    await _pdfService.gerarPlanoCubagemPdf(
-      context: context,
-      nomeFazenda: widget.talhao.fazendaNome ?? 'Fazenda não informada',
-      nomeTalhao: widget.talhao.nome,
-      planoDeCubagem: plano,
-    );
-  }
+  // <<< MÉTODO _gerarPlanoDeCubagemPdf REMOVIDO >>>
+  // void _gerarPlanoDeCubagemPdf() async { ... }
 
   @override
   Widget build(BuildContext context) {
@@ -301,17 +218,7 @@ class _TalhaoDashboardContentState extends State<TalhaoDashboardContent> {
                 label: const Text('Analisar Rendimento Comercial'),
                 style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
               ),
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: _gerarPlanoDeCubagemPdf,
-                icon: const Icon(Icons.picture_as_pdf_outlined, color: Colors.white),
-                label: const Text('Gerar Plano de Cubagem (PDF)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
+              // <<< BOTÃO VERMELHO E O SIZEDBOX ACIMA DELE FORAM REMOVIDOS >>>
             ],
           ),
         );

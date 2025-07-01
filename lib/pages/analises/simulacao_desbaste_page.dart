@@ -5,6 +5,7 @@ import 'package:geoforestcoletor/models/arvore_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/services/analysis_service.dart';
 import 'package:geoforestcoletor/models/analise_result_model.dart';
+import 'package:geoforestcoletor/services/pdf_service.dart'; // <<< 1. IMPORTAR PDF SERVICE
 
 class SimulacaoDesbastePage extends StatefulWidget {
   final List<Parcela> parcelas;
@@ -24,6 +25,7 @@ class SimulacaoDesbastePage extends StatefulWidget {
 
 class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
   final _analysisService = AnalysisService();
+  final _pdfService = PdfService(); // <<< 2. INSTANCIAR PDF SERVICE
   double _intensidadeDesbaste = 0.0; // Em porcentagem (0 a 40)
   late TalhaoAnalysisResult _resultadoSimulacao;
 
@@ -46,11 +48,46 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
     });
   }
 
+  // <<< 3. CRIAR A FUNÇÃO DE EXPORTAÇÃO >>>
+  Future<void> _exportarSimulacaoPdf() async {
+    if (widget.parcelas.isEmpty) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não há dados para exportar.')),
+      );
+      return;
+    }
+
+    // Extrai o nome da fazenda e do talhão da primeira parcela disponível
+    final nomeFazenda = widget.parcelas.first.nomeFazenda ?? 'Fazenda Desconhecida';
+    final nomeTalhao = widget.parcelas.first.nomeTalhao ?? 'Talhão Desconhecido';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Gerando PDF da simulação...')),
+    );
+
+    await _pdfService.gerarRelatorioSimulacaoPdf(
+      context: context,
+      nomeFazenda: nomeFazenda,
+      nomeTalhao: nomeTalhao,
+      intensidade: _intensidadeDesbaste,
+      analiseInicial: widget.analiseInicial,
+      resultadoSimulacao: _resultadoSimulacao,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simulador de Desbaste'),
+        // <<< 4. ADICIONAR BOTÃO DE AÇÃO NA APPBAR >>>
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            onPressed: _exportarSimulacaoPdf,
+            tooltip: 'Exportar Simulação para PDF',
+          )
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
