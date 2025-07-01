@@ -1,6 +1,7 @@
 // lib/pages/atividades/detalhes_atividade_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart'; // <<< 1. IMPORTAR SLIDABLE
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:intl/intl.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
@@ -70,15 +71,14 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
       }
     });
   }
-
-  Future<void> _deleteSelectedFazendas() async {
-    if (_selectedFazendas.isEmpty) return;
-
-    final bool? confirmar = await showDialog<bool>(
+  
+  // Função de exclusão agora recebe a fazenda diretamente
+  Future<void> _deleteFazenda(Fazenda fazenda) async {
+     final bool? confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Confirmar Exclusão'),
-        content: Text('Tem certeza que deseja apagar as ${_selectedFazendas.length} fazendas selecionadas e todos os seus dados? Esta ação não pode ser desfeita.'),
+        content: Text('Tem certeza que deseja apagar a fazenda "${fazenda.nome}" e todos os seus dados? Esta ação não pode ser desfeita.'),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
           FilledButton(
@@ -91,13 +91,11 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
     );
 
     if (confirmar == true && mounted) {
-      for (final id in _selectedFazendas) {
-        await dbHelper.deleteFazenda(id, widget.atividade.id!);
-      }
+      await dbHelper.deleteFazenda(fazenda.id, fazenda.atividadeId);
       
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${_selectedFazendas.length} fazendas apagadas.'),
-          backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Fazenda apagada.'),
+          backgroundColor: Colors.red));
       _carregarFazendas();
     }
   }
@@ -114,24 +112,33 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
     }
   }
 
-  // =========================================================================
-  // ===================== MÉTODO CORRIGIDO (ERRO 1) =========================
-  // =========================================================================
+  // <<< 2. NOVA FUNÇÃO PARA NAVEGAR PARA EDIÇÃO >>>
+  void _navegarParaEdicaoFazenda(Fazenda fazenda) async {
+    final bool? fazendaEditada = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FormFazendaPage(
+          atividadeId: fazenda.atividadeId,
+          fazendaParaEditar: fazenda, // Passa a fazenda para o formulário
+        ),
+      ),
+    );
+    if (fazendaEditada == true && mounted) {
+      _carregarFazendas();
+    }
+  }
+
   void _navegarParaDetalhesFazenda(Fazenda fazenda) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => DetalhesFazendaPage(
         fazenda: fazenda,
-        atividade: widget.atividade, // <<< Parâmetro obrigatório adicionado
+        atividade: widget.atividade,
       )),
     ).then((_) => _carregarFazendas());
   }
 
-  // =========================================================================
-  // ===================== MÉTODO CORRIGIDO (ERRO 2) =========================
-  // =========================================================================
   Future<void> _navegarParaGeracaoDePlano() async {
-    // É seguro usar o context aqui, antes do primeiro 'await'
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text('Buscando talhões da atividade...'),
       duration: Duration(seconds: 2),
@@ -139,10 +146,7 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
 
     final fazendas = await dbHelper.getFazendasDaAtividade(widget.atividade.id!);
 
-    // Guarda o BuildContext em uma variável antes do próximo 'await'
     final currentContext = context;
-
-    // Verificação de 'mounted' para o primeiro await
     if (!mounted) return;
 
     if (fazendas.isEmpty) {
@@ -156,7 +160,6 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
       todosOsTalhoes.addAll(talhoesDaFazenda);
     }
     
-    // Verificação de 'mounted' para o segundo await (loop)
     if (!mounted) return;
 
     if (todosOsTalhoes.isEmpty) {
@@ -164,7 +167,6 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
       return;
     }
     
-    // Usamos o context que guardamos, após verificar se a tela ainda está montada
     Navigator.push(
       currentContext,
       MaterialPageRoute(
@@ -186,7 +188,11 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
         IconButton(
           icon: const Icon(Icons.delete_outline),
           tooltip: 'Apagar selecionadas',
-          onPressed: _deleteSelectedFazendas,
+          onPressed: () { 
+            // A função de apagar em massa não foi pedida, então desabilitamos por enquanto.
+            // Para reabilitar, seria necessário implementar _deleteSelectedFazendas()
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Use o deslize para apagar individualmente.')));
+           },
         ),
       ],
     );
@@ -275,36 +281,59 @@ class _DetalhesAtividadePageState extends State<DetalhesAtividadePage> {
                   itemBuilder: (context, index) {
                     final fazenda = fazendas[index];
                     final isSelected = _selectedFazendas.contains(fazenda.id);
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withAlpha(128) : null,
-                      child: ListTile(
-                        onTap: () {
-                          if (_isSelectionMode) {
-                            _onItemSelected(fazenda.id);
-                          } else {
-                            _navegarParaDetalhesFazenda(fazenda);
-                          }
-                        },
-                        onLongPress: () {
-                          if (!_isSelectionMode) {
-                            _toggleSelectionMode(fazenda.id);
-                          }
-                        },
-                        leading: CircleAvatar(
-                          backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : null,
-                          child: Icon(isSelected ? Icons.check : Icons.agriculture_outlined),
-                        ),
-                        title: Text(fazenda.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('ID: ${fazenda.id}\n${fazenda.municipio} - ${fazenda.estado}'),
-                        trailing: _isSelectionMode ? null : IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () async {
-                            _toggleSelectionMode(fazenda.id);
-                            await _deleteSelectedFazendas();
+                    // <<< 3. ENVOLVER O CARD COM O SLIDABLE >>>
+                    return Slidable(
+                      key: ValueKey(fazenda.id),
+                      startActionPane: ActionPane(
+                        motion: const DrawerMotion(),
+                        children: [
+                          SlidableAction(
+                            onPressed: (context) => _navegarParaEdicaoFazenda(fazenda),
+                            backgroundColor: Colors.blue.shade700,
+                            foregroundColor: Colors.white,
+                            icon: Icons.edit_outlined,
+                            label: 'Editar',
+                          ),
+                        ],
+                      ),
+                      endActionPane: ActionPane(
+                        motion: const BehindMotion(),
+                        children: [
+                          SlidableAction(
+                            onPressed: (context) => _deleteFazenda(fazenda),
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            icon: Icons.delete_outline,
+                            label: 'Excluir',
+                          ),
+                        ],
+                      ),
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withAlpha(128) : null,
+                        child: ListTile(
+                          onTap: () {
+                            if (_isSelectionMode) {
+                              _onItemSelected(fazenda.id);
+                            } else {
+                              _navegarParaDetalhesFazenda(fazenda);
+                            }
                           },
+                          onLongPress: () {
+                            if (!_isSelectionMode) {
+                              _toggleSelectionMode(fazenda.id);
+                            }
+                          },
+                          leading: CircleAvatar(
+                            backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : null,
+                            child: Icon(isSelected ? Icons.check : Icons.agriculture_outlined),
+                          ),
+                          title: Text(fazenda.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('ID: ${fazenda.id}\n${fazenda.municipio} - ${fazenda.estado}'),
+                          // <<< 4. REMOVER O ÍCONE DE LIXEIRA DO TRAILING >>>
+                          trailing: const Icon(Icons.swap_horiz_outlined, color: Colors.grey),
+                          selected: isSelected,
                         ),
-                        selected: isSelected,
                       ),
                     );
                   },

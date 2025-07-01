@@ -67,7 +67,8 @@ class DatabaseHelper {
 
     return await openDatabase(
       join(await getDatabasesPath(), 'geoforestcoletor.db'),
-      version: 21,
+      // <<< VERSÃO DO BANCO INCREMENTADA >>>
+      version: 22, 
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -76,6 +77,7 @@ class DatabaseHelper {
 
   Future<void> _onConfigure(Database db) async => await db.execute('PRAGMA foreign_keys = ON');
 
+  // <<< MÉTODO ONCREATE ATUALIZADO >>>
   Future<void> _onCreate(Database db, int version) async {
      await db.execute('''
       CREATE TABLE projetos (
@@ -116,6 +118,7 @@ class DatabaseHelper {
         areaHa REAL,
         idadeAnos REAL,
         especie TEXT,
+        espacamento TEXT, 
         FOREIGN KEY (fazendaId, fazendaAtividadeId) REFERENCES fazendas (id, atividadeId) ON DELETE CASCADE
       )
     ''');
@@ -127,7 +130,6 @@ class DatabaseHelper {
         nomeTalhao TEXT,
         idParcela TEXT NOT NULL,
         areaMetrosQuadrados REAL NOT NULL,
-        espacamento TEXT,
         observacao TEXT,
         latitude REAL,
         longitude REAL,
@@ -139,8 +141,7 @@ class DatabaseHelper {
         largura REAL,
         comprimento REAL,
         raio REAL,
-        idadeFloresta REAL,
-        areaTalhao REAL,
+        photoPaths TEXT,
         FOREIGN KEY (talhaoId) REFERENCES talhoes (id) ON DELETE CASCADE
       )
     ''');
@@ -195,11 +196,13 @@ class DatabaseHelper {
         'CREATE INDEX idx_cubagens_secoes_cubagemArvoreId ON cubagens_secoes(cubagemArvoreId)');
   }
 
+  // <<< MÉTODO ONUPGRADE ATUALIZADO >>>
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     for (var v = oldVersion + 1; v <= newVersion; v++) {
       debugPrint("Executando migração de banco de dados para a versão $v...");
        switch (v) {
         case 21:
+          // A migração 21 permanece a mesma
           await db.execute('DROP TABLE IF EXISTS cubagens_arvores');
           await db.execute('''
             CREATE TABLE cubagens_arvores (
@@ -230,6 +233,19 @@ class DatabaseHelper {
               FOREIGN KEY (cubagemArvoreId) REFERENCES cubagens_arvores (id) ON DELETE CASCADE
             )
           ''');
+          break;
+        case 22:
+          // <<< NOVA MIGRAÇÃO >>>
+          // Adiciona a coluna espacamento na tabela talhoes
+          await db.execute('ALTER TABLE talhoes ADD COLUMN espacamento TEXT');
+          // Adiciona a coluna photoPaths na tabela parcelas
+          await db.execute('ALTER TABLE parcelas ADD COLUMN photoPaths TEXT');
+          // O SQLite não tem um comando para remover colunas de forma simples.
+          // Como as colunas (espacamento, idadeFloresta, areaTalhao) na tabela
+          // parcelas eram opcionais (REAL), simplesmente deixá-las lá não
+          // quebrará o aplicativo. O app apenas deixará de usá-las.
+          // Tentar recriar a tabela inteira e copiar os dados seria arriscado
+          // e complexo, então a abordagem mais segura é apenas deixar as colunas antigas.
           break;
       }
     }
@@ -663,7 +679,8 @@ class DatabaseHelper {
       final projUTM = proj4.Projection.get('EPSG:$codigoEpsg')!;
 
       List<List<dynamic>> rows = [];
-      rows.add(['Lider_Equipe', 'Ajudantes', 'ID_Db_Parcela', 'Codigo_Fazenda', 'Fazenda', 'Talhao', 'ID_Coleta_Parcela', 'Area_m2', 'Largura_m', 'Comprimento_m', 'Raio_m', 'Espacamento', 'Observacao_Parcela', 'Easting', 'Northing', 'Data_Coleta', 'Status_Parcela', 'Linha', 'Posicao_na_Linha', 'Fuste_Num', 'Codigo_Arvore', 'Codigo_Arvore_2', 'CAP_cm', 'Altura_m', 'Dominante']);
+      // <<< CABEÇALHO DO CSV ATUALIZADO >>>
+      rows.add(['Lider_Equipe', 'Ajudantes', 'ID_Db_Parcela', 'Codigo_Fazenda', 'Fazenda', 'Talhao', 'Espacamento_Talhao', 'ID_Coleta_Parcela', 'Area_m2', 'Largura_m', 'Comprimento_m', 'Raio_m', 'Observacao_Parcela', 'Easting', 'Northing', 'Data_Coleta', 'Status_Parcela', 'Linha', 'Posicao_na_Linha', 'Fuste_Num', 'Codigo_Arvore', 'Codigo_Arvore_2', 'CAP_cm', 'Altura_m', 'Dominante']);
       
       for (var pMap in parcelasMaps) {
         String easting = '', northing = '';
@@ -672,16 +689,25 @@ class DatabaseHelper {
           easting = pUtm.x.toStringAsFixed(2);
           northing = pUtm.y.toStringAsFixed(2);
         }
+        
+        // <<< BUSCA O ESPAÇAMENTO DO TALHÃO >>>
+        Talhao? talhao;
+        if (pMap['talhaoId'] != null) {
+          final talhoes = await getTalhoesDaFazenda(pMap['idFazenda'], pMap['fazendaAtividadeId']);
+          talhao = talhoes.firstWhere((t) => t.id == pMap['talhaoId']);
+        }
 
         final arvores = await getArvoresDaParcela(pMap['id'] as int);
         if (arvores.isEmpty) {
-          rows.add([nomeLider, nomesAjudantes, pMap['id'], pMap['idFazenda'], pMap['nomeFazenda'], pMap['nomeTalhao'], pMap['idParcela'], pMap['areaMetrosQuadrados'], pMap['largura'], pMap['comprimento'], pMap['raio'], pMap['espacamento'], pMap['observacao'], easting, northing, pMap['dataColeta'], pMap['status'], null, null, null, null, null, null, null, null]);
+          // <<< ATUALIZA A LINHA PARA INCLUIR O ESPAÇAMENTO >>>
+          rows.add([nomeLider, nomesAjudantes, pMap['id'], pMap['idFazenda'], pMap['nomeFazenda'], pMap['nomeTalhao'], talhao?.espacamento, pMap['idParcela'], pMap['areaMetrosQuadrados'], pMap['largura'], pMap['comprimento'], pMap['raio'], pMap['observacao'], easting, northing, pMap['dataColeta'], pMap['status'], null, null, null, null, null, null, null, null]);
         } else {
           Map<String, int> fusteCounter = {};
           for (final a in arvores) {
             String key = '${a.linha}-${a.posicaoNaLinha}';
             fusteCounter[key] = (fusteCounter[key] ?? 0) + 1;
-            rows.add([nomeLider, nomesAjudantes, pMap['id'], pMap['idFazenda'], pMap['nomeFazenda'], pMap['nomeTalhao'], pMap['idParcela'], pMap['areaMetrosQuadrados'], pMap['largura'], pMap['comprimento'], pMap['raio'], pMap['espacamento'], pMap['observacao'], easting, northing, pMap['dataColeta'], pMap['status'], a.linha, a.posicaoNaLinha, fusteCounter[key], a.codigo.name, a.codigo2?.name, a.cap, a.altura, a.dominante ? 'Sim' : 'Não']);
+            // <<< ATUALIZA A LINHA PARA INCLUIR O ESPAÇAMENTO >>>
+            rows.add([nomeLider, nomesAjudantes, pMap['id'], pMap['idFazenda'], pMap['nomeFazenda'], pMap['nomeTalhao'], talhao?.espacamento, pMap['idParcela'], pMap['areaMetrosQuadrados'], pMap['largura'], pMap['comprimento'], pMap['raio'], pMap['observacao'], easting, northing, pMap['dataColeta'], pMap['status'], a.linha, a.posicaoNaLinha, fusteCounter[key], a.codigo.name, a.codigo2?.name, a.cap, a.altura, a.dominante ? 'Sim' : 'Não']);
           }
         }
       }
@@ -717,8 +743,6 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) => Parcela.fromMap(maps[i]));
   }
   
-  // <<< NOVO MÉTODO ADICIONADO PARA O BACKUP >>>
-  // Busca TODAS as parcelas concluídas, ignorando se já foram exportadas
   Future<List<Parcela>> getTodasAsParcelasConcluidasParaBackup() async {
     final db = await database;
     final maps = await db.query('parcelas', where: 'status = ?', whereArgs: [StatusParcela.concluida.name]);
@@ -777,7 +801,13 @@ class DatabaseHelper {
           } else {
             Talhao? talhao = (await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [nomeTalhao, fazenda.id, fazenda.atividadeId])).map((e) => Talhao.fromMap(e)).firstOrNull;
             if (talhao == null) {
-              final novoTalhao = Talhao(fazendaId: fazenda.id, fazendaAtividadeId: fazenda.atividadeId, nome: nomeTalhao);
+              // <<< ATUALIZA A CRIAÇÃO DO TALHÃO PARA INCLUIR ESPAÇAMENTO >>>
+              final novoTalhao = Talhao(
+                fazendaId: fazenda.id,
+                fazendaAtividadeId: fazenda.atividadeId,
+                nome: nomeTalhao,
+                espacamento: rowMap['Espacamento_Talhao']?.toString(), // Lê do novo campo do CSV
+              );
               talhaoId = await txn.insert('talhoes', novoTalhao.toMap());
               novosTalhoes++;
             } else {
@@ -793,7 +823,6 @@ class DatabaseHelper {
               talhaoId: talhaoId,
               idParcela: idParcelaColeta,
               areaMetrosQuadrados: double.tryParse(rowMap['Area_m2']?.toString() ?? '0') ?? 0,
-              espacamento: rowMap['Espacamento']?.toString(),
               dataColeta: DateTime.tryParse(rowMap['Data_Coleta']?.toString() ?? '') ?? DateTime.now(),
               status: StatusParcela.concluida,
               nomeFazenda: rowMap['Fazenda'].toString(),
@@ -866,7 +895,16 @@ class DatabaseHelper {
           }
           Talhao? talhao = await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [properties['talhao_nome'], fazenda.id, fazenda.atividadeId]).then((list) => list.isEmpty ? null : Talhao.fromMap(list.first));
           if (talhao == null) {
-            talhao = Talhao(fazendaId: fazenda.id, fazendaAtividadeId: fazenda.atividadeId, nome: properties['talhao_nome'], especie: properties['talhao_especie'], areaHa: properties['talhao_area_ha'], idadeAnos: properties['talhao_idade_anos']);
+            // <<< ATUALIZA A CRIAÇÃO DO TALHÃO PARA INCLUIR ESPAÇAMENTO >>>
+            talhao = Talhao(
+              fazendaId: fazenda.id, 
+              fazendaAtividadeId: fazenda.atividadeId, 
+              nome: properties['talhao_nome'], 
+              especie: properties['talhao_especie'], 
+              areaHa: properties['talhao_area_ha'], 
+              idadeAnos: properties['talhao_idade_anos'],
+              espacamento: properties['parcela_espacamento'], // Reutiliza o campo da parcela para o talhão
+            );
             final talhaoId = await txn.insert('talhoes', talhao.toMap());
             talhao = talhao.copyWith(id: talhaoId);
             talhoesCriados++;
@@ -878,7 +916,6 @@ class DatabaseHelper {
               talhaoId: talhao.id!,
               idParcela: properties['parcela_id_plano'],
               areaMetrosQuadrados: properties['parcela_area_m2'] ?? 0.0,
-              espacamento: properties['parcela_espacamento'],
               status: StatusParcela.pendente,
               dataColeta: DateTime.now(),
               latitude: geometry != null ? geometry['coordinates'][1] : null,

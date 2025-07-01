@@ -53,6 +53,9 @@ dependencies:
   flutter_map_dragmarker: ^6.0.0
   fl_chart: ^0.68.0
   flutter_archive: ^6.0.3
+
+  # Fotos
+  image_picker: ^1.0.7
   
   
   

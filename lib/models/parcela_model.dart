@@ -1,9 +1,9 @@
-// lib/models/parcela_model.dart (VERSÃO FINAL E CORRIGIDA)
+// lib/models/parcela_model.dart
 
+import 'dart:convert'; // <<< IMPORT NECESSÁRIO PARA JSON
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/arvore_model.dart';
 
-// Seu enum de status está perfeito e foi mantido.
 enum StatusParcela {
   pendente(Icons.pending_outlined, Colors.grey),
   emAndamento(Icons.edit_note_outlined, Colors.orange),
@@ -17,10 +17,9 @@ enum StatusParcela {
 
 class Parcela {
   int? dbId;
-  int? talhaoId; // <<< CHAVE ESTRANGEIRA PARA O TALHÃO
+  int? talhaoId; 
   DateTime? dataColeta;
   
-  // Campos antigos mantidos como opcionais para compatibilidade
   final String? idFazenda;
   final String? nomeFazenda;
   final String? nomeTalhao;
@@ -28,7 +27,6 @@ class Parcela {
   // Campos principais
   final String idParcela;
   final double areaMetrosQuadrados;
-  final String? espacamento;
   final String? observacao;
   final double? latitude;
   final double? longitude;
@@ -38,36 +36,42 @@ class Parcela {
   final double? largura;
   final double? comprimento;
   final double? raio;
-  final double? idadeFloresta;
-  final double? areaTalhao;
+  
+  // <<< NOVOS CAMPOS >>>
+  List<String> photoPaths; // Para os caminhos das fotos
+  
+  // <<< CAMPOS REMOVIDOS >>>
+  // final String? espacamento;
+  // final double? idadeFloresta;
+  // final double? areaTalhao;
 
   List<Arvore> arvores;
 
   Parcela({
     this.dbId,
-    required this.talhaoId, // <<< AGORA É OBRIGATÓRIO
+    required this.talhaoId,
     required this.idParcela,
     required this.areaMetrosQuadrados,
     this.idFazenda,
-    this.nomeFazenda, // Opcional
-    this.nomeTalhao,  // Opcional
-    this.espacamento,
+    this.nomeFazenda,
+    this.nomeTalhao,
+    // espacamento, // removido
     this.observacao,
     this.latitude,
     this.longitude,
     this.dataColeta,
-    this.status = StatusParcela.pendente, // Valor padrão
+    this.status = StatusParcela.pendente,
     this.exportada = false,
     this.isSynced = false,
     this.largura,
     this.comprimento,
     this.raio,
-    this.idadeFloresta,
-    this.areaTalhao,
+    // idadeFloresta, // removido
+    // areaTalhao,    // removido
+    this.photoPaths = const [], // <<< VALOR PADRÃO
     this.arvores = const [],
   });
 
-  // copyWith atualizado para incluir talhaoId
   Parcela copyWith({
     int? dbId,
     int? talhaoId,
@@ -76,7 +80,7 @@ class Parcela {
     String? nomeTalhao,
     String? idParcela,
     double? areaMetrosQuadrados,
-    String? espacamento,
+    // String? espacamento, // removido
     String? observacao,
     double? latitude,
     double? longitude,
@@ -87,8 +91,9 @@ class Parcela {
     double? largura,
     double? comprimento,
     double? raio,
-    double? idadeFloresta,
-    double? areaTalhao,
+    // double? idadeFloresta, // removido
+    // double? areaTalhao,    // removido
+    List<String>? photoPaths, // <<< ADICIONADO
     List<Arvore>? arvores,
   }) {
     return Parcela(
@@ -99,7 +104,7 @@ class Parcela {
       nomeTalhao: nomeTalhao ?? this.nomeTalhao,
       idParcela: idParcela ?? this.idParcela,
       areaMetrosQuadrados: areaMetrosQuadrados ?? this.areaMetrosQuadrados,
-      espacamento: espacamento ?? this.espacamento,
+      // espacamento: espacamento ?? this.espacamento, // removido
       observacao: observacao ?? this.observacao,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
@@ -110,8 +115,9 @@ class Parcela {
       largura: largura ?? this.largura,
       comprimento: comprimento ?? this.comprimento,
       raio: raio ?? this.raio,
-      idadeFloresta: idadeFloresta ?? this.idadeFloresta,
-      areaTalhao: areaTalhao ?? this.areaTalhao,
+      // idadeFloresta: idadeFloresta ?? this.idadeFloresta, // removido
+      // areaTalhao: areaTalhao ?? this.areaTalhao,       // removido
+      photoPaths: photoPaths ?? this.photoPaths, // <<< ADICIONADO
       arvores: arvores ?? this.arvores,
     );
   }
@@ -119,13 +125,13 @@ class Parcela {
   Map<String, dynamic> toMap() {
     return {
       'id': dbId,
-      'talhaoId': talhaoId, // <<< SALVA O ID DO TALHÃO
+      'talhaoId': talhaoId,
       'idFazenda': idFazenda,
       'nomeFazenda': nomeFazenda,
       'nomeTalhao': nomeTalhao,
       'idParcela': idParcela,
       'areaMetrosQuadrados': areaMetrosQuadrados,
-      'espacamento': espacamento,
+      // 'espacamento': espacamento, // removido
       'observacao': observacao,
       'latitude': latitude,
       'longitude': longitude,
@@ -136,21 +142,33 @@ class Parcela {
       'largura': largura,
       'comprimento': comprimento,
       'raio': raio,
-      'idadeFloresta': idadeFloresta,
-      'areaTalhao': areaTalhao,
+      'photoPaths': jsonEncode(photoPaths), // <<< SALVA A LISTA COMO TEXTO JSON
+      // 'idadeFloresta': idadeFloresta, // removido
+      // 'areaTalhao': areaTalhao,       // removido
     };
   }
 
   factory Parcela.fromMap(Map<String, dynamic> map) {
+    List<String> paths = [];
+    if (map['photoPaths'] != null) {
+      try {
+        // Tenta decodificar o JSON. Se falhar, a lista permanece vazia.
+        paths = List<String>.from(jsonDecode(map['photoPaths']));
+      } catch (e) {
+        // Lida com casos onde o dado pode não ser um JSON válido.
+        print("Erro ao decodificar photoPaths: $e");
+      }
+    }
+
     return Parcela(
       dbId: map['id'],
-      talhaoId: map['talhaoId'], // <<< LÊ O ID DO TALHÃO
+      talhaoId: map['talhaoId'],
       idFazenda: map['idFazenda'],
       nomeFazenda: map['nomeFazenda'],
       nomeTalhao: map['nomeTalhao'],
       idParcela: map['idParcela'],
       areaMetrosQuadrados: map['areaMetrosQuadrados'],
-      espacamento: map['espacamento'],
+      // espacamento: map['espacamento'], // removido
       observacao: map['observacao'],
       latitude: map['latitude'],
       longitude: map['longitude'],
@@ -164,8 +182,9 @@ class Parcela {
       largura: map['largura'],
       comprimento: map['comprimento'],
       raio: map['raio'],
-      idadeFloresta: map['idadeFloresta'],
-      areaTalhao: map['areaTalhao'],
+      photoPaths: paths, // <<< LÊ A LISTA DO TEXTO JSON
+      // idadeFloresta: map['idadeFloresta'], // removido
+      // areaTalhao: map['areaTalhao'],       // removido
     );
   }
 }

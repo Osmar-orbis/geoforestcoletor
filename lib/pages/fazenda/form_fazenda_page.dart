@@ -1,4 +1,4 @@
-// lib/pages/fazendas/form_fazenda_page.dart
+// lib/pages/fazenda/form_fazenda_page.dart
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
@@ -6,10 +6,16 @@ import 'package:geoforestcoletor/models/fazenda_model.dart';
 import 'package:sqflite/sqflite.dart';
 
 class FormFazendaPage extends StatefulWidget {
-  // A página precisa saber a qual ATIVIDADE esta fazenda pertence.
   final int atividadeId;
+  final Fazenda? fazendaParaEditar; 
 
-  const FormFazendaPage({super.key, required this.atividadeId});
+  const FormFazendaPage({
+    super.key,
+    required this.atividadeId,
+    this.fazendaParaEditar, 
+  });
+
+  bool get isEditing => fazendaParaEditar != null;
 
   @override
   State<FormFazendaPage> createState() => _FormFazendaPageState();
@@ -25,6 +31,18 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
   bool _isSaving = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.isEditing) {
+      final fazenda = widget.fazendaParaEditar!;
+      _idController.text = fazenda.id;
+      _nomeController.text = fazenda.nome;
+      _municipioController.text = fazenda.municipio;
+      _estadoController.text = fazenda.estado;
+    }
+  }
+
+  @override
   void dispose() {
     _idController.dispose();
     _nomeController.dispose();
@@ -33,13 +51,11 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
     super.dispose();
   }
 
-  Future<void> _salvarFazenda() async {
-    // Valida o formulário
+  Future<void> _salvar() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isSaving = true);
 
-      // Cria o objeto Fazenda com os dados dos campos
-      final novaFazenda = Fazenda(
+      final fazenda = Fazenda(
         id: _idController.text.trim(),
         atividadeId: widget.atividadeId,
         nome: _nomeController.text.trim(),
@@ -49,19 +65,28 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
 
       try {
         final dbHelper = DatabaseHelper.instance;
-        await dbHelper.insertFazenda(novaFazenda);
+        
+        if (widget.isEditing) {
+            // No modo de edição, não podemos simplesmente dar update no ID, pois ele faz parte da chave primária.
+            // A melhor abordagem é apagar e inserir novamente, garantindo que o ID permaneça o mesmo.
+            // O DatabaseHelper não tem um método update para fazenda, então esta é a lógica correta.
+            await dbHelper.deleteFazenda(widget.fazendaParaEditar!.id, widget.fazendaParaEditar!.atividadeId);
+        }
+        await dbHelper.insertFazenda(fazenda);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fazenda criada com sucesso!'), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text('Fazenda ${widget.isEditing ? 'atualizada' : 'criada'} com sucesso!'),
+              backgroundColor: Colors.green
+            ),
           );
-          Navigator.of(context).pop(true); // Retorna 'true' para a tela anterior recarregar a lista
+          Navigator.of(context).pop(true);
         }
       } on DatabaseException catch (e) {
-        // Trata o erro específico de ID duplicado (chave primária composta)
         if (e.isUniqueConstraintError() && mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erro: O ID "${novaFazenda.id}" já existe para esta atividade.'), backgroundColor: Colors.red),
+            SnackBar(content: Text('Erro: O ID "${fazenda.id}" já existe para esta atividade.'), backgroundColor: Colors.red),
           );
         } else if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -87,7 +112,7 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nova Fazenda'),
+        title: Text(widget.isEditing ? 'Editar Fazenda' : 'Nova Fazenda'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -96,13 +121,20 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Campo para o ID da Fazenda (fornecido pelo cliente)
               TextFormField(
                 controller: _idController,
-                decoration: const InputDecoration(
+                // <<< ALTERAÇÃO PRINCIPAL AQUI >>>
+                enabled: !widget.isEditing,
+                style: TextStyle(
+                  color: widget.isEditing ? Colors.grey.shade600 : null,
+                ),
+                decoration: InputDecoration(
                   labelText: 'ID da Fazenda (Código do Cliente)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.vpn_key_outlined),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.vpn_key_outlined),
+                  // Adiciona uma cor de preenchimento para indicar que está desabilitado
+                  filled: widget.isEditing,
+                  fillColor: Colors.grey.shade200,
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -112,7 +144,6 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
                 },
               ),
               const SizedBox(height: 16),
-              // Campo para o Nome da Fazenda
               TextFormField(
                 controller: _nomeController,
                 decoration: const InputDecoration(
@@ -128,7 +159,6 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
                 },
               ),
               const SizedBox(height: 16),
-              // Outros campos...
               TextFormField(
                 controller: _municipioController,
                 decoration: const InputDecoration(
@@ -162,9 +192,8 @@ class _FormFazendaPageState extends State<FormFazendaPage> {
                 },
               ),
               const SizedBox(height: 32),
-              // Botão de Salvar
               ElevatedButton.icon(
-                onPressed: _isSaving ? null : _salvarFazenda,
+                onPressed: _isSaving ? null : _salvar,
                 icon: _isSaving
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.save_outlined),

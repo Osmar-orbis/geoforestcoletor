@@ -1,8 +1,9 @@
-// lib/pages/fazenda/detalhes_fazenda_page.dart (VERSÃO CORRIGIDA)
+// lib/pages/fazenda/detalhes_fazenda_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart'; // <<< 1. IMPORTAR SLIDABLE
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart'; // <<< IMPORT NECESSÁRIO
+import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/fazenda_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/talhoes/form_talhao_page.dart';
@@ -11,7 +12,6 @@ import 'package:geoforestcoletor/pages/menu/home_page.dart';
 
 class DetalhesFazendaPage extends StatefulWidget {
   final Fazenda fazenda;
-  // <<< O WIDGET AGORA RECEBE A ATIVIDADE DA TELA ANTERIOR >>>
   final Atividade atividade; 
   
   const DetalhesFazendaPage({super.key, required this.fazenda, required this.atividade});
@@ -43,7 +43,6 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
     }
   }
 
-  // --- MÉTODOS DE SELEÇÃO E EXCLUSÃO (sem alteração) ---
   void _toggleSelectionMode(int? talhaoId) {
     setState(() {
       _isSelectionMode = !_isSelectionMode;
@@ -67,14 +66,12 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
     });
   }
 
-  Future<void> _deleteSelectedTalhoes() async {
-    if (_selectedTalhoes.isEmpty) return;
-    
+  Future<void> _deleteTalhao(Talhao talhao) async {
     final bool? confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Confirmar Exclusão'),
-        content: Text('Tem certeza que deseja apagar os ${_selectedTalhoes.length} talhões selecionados e todos os seus dados? Esta ação não pode ser desfeita.'),
+        content: Text('Tem certeza que deseja apagar o talhão "${talhao.nome}" e todos os seus dados? Esta ação não pode ser desfeita.'),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
           FilledButton(
@@ -87,18 +84,14 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
     );
 
     if (confirmar == true && mounted) {
-      for (final id in _selectedTalhoes) {
-        await dbHelper.deleteTalhao(id);
-      }
-      
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${_selectedTalhoes.length} talhões apagados.'),
-          backgroundColor: Colors.green));
+      await dbHelper.deleteTalhao(talhao.id!);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Talhão apagado.'),
+          backgroundColor: Colors.red));
       _carregarTalhoes();
     }
   }
 
-  // --- MÉTODOS DE NAVEGAÇÃO ---
   void _navegarParaNovoTalhao() async {
     final bool? talhaoCriado = await Navigator.push<bool>(
       context,
@@ -114,17 +107,33 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
     }
   }
   
+  // <<< 2. NOVA FUNÇÃO PARA NAVEGAR PARA EDIÇÃO >>>
+  void _navegarParaEdicaoTalhao(Talhao talhao) async {
+    final bool? talhaoEditado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FormTalhaoPage(
+          fazendaId: talhao.fazendaId,
+          fazendaAtividadeId: talhao.fazendaAtividadeId,
+          talhaoParaEditar: talhao, // Passa o talhão para o formulário
+        ),
+      ),
+    );
+    if (talhaoEditado == true && mounted) {
+      _carregarTalhoes();
+    }
+  }
+  
   void _navegarParaDetalhesTalhao(Talhao talhao) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => DetalhesTalhaoPage(
         talhao: talhao,
-        atividade: widget.atividade, // <<< PASSANDO A ATIVIDADE PARA A TELA SEGUINTE
+        atividade: widget.atividade,
       )),
     ).then((_) => _carregarTalhoes());
   }
 
-  // --- WIDGETS DE CONSTRUÇÃO DA UI (sem alteração) ---
   AppBar _buildSelectionAppBar() {
     return AppBar(
       title: Text('${_selectedTalhoes.length} selecionado(s)'),
@@ -136,7 +145,9 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
         IconButton(
           icon: const Icon(Icons.delete_outline),
           tooltip: 'Apagar selecionados',
-          onPressed: _deleteSelectedTalhoes,
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Use o deslize para apagar individualmente.')));
+          },
         ),
       ],
     );
@@ -223,36 +234,59 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
                   itemBuilder: (context, index) {
                     final talhao = talhoes[index];
                     final isSelected = _selectedTalhoes.contains(talhao.id!);
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withAlpha(128) : null,
-                      child: ListTile(
-                        onTap: () {
-                          if (_isSelectionMode) {
-                            _onItemSelected(talhao.id!);
-                          } else {
-                            _navegarParaDetalhesTalhao(talhao);
-                          }
-                        },
-                        onLongPress: () {
-                          if (!_isSelectionMode) {
-                            _toggleSelectionMode(talhao.id!);
-                          }
-                        },
-                        leading: CircleAvatar(
-                          backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : null,
-                          child: Icon(isSelected ? Icons.check : Icons.park_outlined),
+                    // <<< 3. ENVOLVER O CARD COM O SLIDABLE >>>
+                    return Slidable(
+                      key: ValueKey(talhao.id),
+                      startActionPane: ActionPane(
+                        motion: const DrawerMotion(),
+                        children: [
+                          SlidableAction(
+                            onPressed: (context) => _navegarParaEdicaoTalhao(talhao),
+                            backgroundColor: Colors.blue.shade700,
+                            foregroundColor: Colors.white,
+                            icon: Icons.edit_outlined,
+                            label: 'Editar',
+                          ),
+                        ],
+                      ),
+                      endActionPane: ActionPane(
+                        motion: const BehindMotion(),
+                        children: [
+                          SlidableAction(
+                            onPressed: (context) => _deleteTalhao(talhao),
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            icon: Icons.delete_outline,
+                            label: 'Excluir',
+                          ),
+                        ],
+                      ),
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withAlpha(128) : null,
+                        child: ListTile(
+                          onTap: () {
+                            if (_isSelectionMode) {
+                              _onItemSelected(talhao.id!);
+                            } else {
+                              _navegarParaDetalhesTalhao(talhao);
+                            }
+                          },
+                          onLongPress: () {
+                            if (!_isSelectionMode) {
+                              _toggleSelectionMode(talhao.id!);
+                            }
+                          },
+                          leading: CircleAvatar(
+                            backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : null,
+                            child: Icon(isSelected ? Icons.check : Icons.park_outlined),
+                          ),
+                          title: Text(talhao.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('Área: ${talhao.areaHa?.toStringAsFixed(2) ?? 'N/A'} ha - Espécie: ${talhao.especie ?? 'N/A'}'),
+                          // <<< 4. REMOVER O ÍCONE DE LIXEIRA DO TRAILING >>>
+                          trailing: const Icon(Icons.swap_horiz_outlined, color: Colors.grey),
+                          selected: isSelected,
                         ),
-                        title: Text(talhao.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('Área: ${talhao.areaHa?.toStringAsFixed(2) ?? 'N/A'} ha - Espécie: ${talhao.especie ?? 'N/A'}'),
-                        trailing: _isSelectionMode ? null : IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () async {
-                             _toggleSelectionMode(talhao.id!);
-                             await _deleteSelectedTalhoes();
-                          }
-                        ),
-                        selected: isSelected,
                       ),
                     );
                   },

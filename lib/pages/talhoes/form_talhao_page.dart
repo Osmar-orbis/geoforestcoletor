@@ -6,16 +6,18 @@ import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 
 class FormTalhaoPage extends StatefulWidget {
-  // O formulário precisa saber a qual fazenda o novo talhão pertence.
-  // Para isso, passamos a chave primária composta da fazenda.
   final String fazendaId;
   final int fazendaAtividadeId;
+  final Talhao? talhaoParaEditar; // <<< 1. NOVO PARÂMETRO OPCIONAL
 
   const FormTalhaoPage({
     super.key,
     required this.fazendaId,
     required this.fazendaAtividadeId,
+    this.talhaoParaEditar, // Adicionado ao construtor
   });
+
+  bool get isEditing => talhaoParaEditar != null;
 
   @override
   State<FormTalhaoPage> createState() => _FormTalhaoPageState();
@@ -27,8 +29,23 @@ class _FormTalhaoPageState extends State<FormTalhaoPage> {
   final _areaController = TextEditingController();
   final _idadeController = TextEditingController();
   final _especieController = TextEditingController();
+  final _espacamentoController = TextEditingController();
 
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // <<< 2. LÓGICA PARA PRÉ-PREENCHER O FORMULÁRIO >>>
+    if (widget.isEditing) {
+      final talhao = widget.talhaoParaEditar!;
+      _nomeController.text = talhao.nome;
+      _especieController.text = talhao.especie ?? '';
+      _espacamentoController.text = talhao.espacamento ?? '';
+      _areaController.text = talhao.areaHa?.toString().replaceAll('.', ',') ?? '';
+      _idadeController.text = talhao.idadeAnos?.toString().replaceAll('.', ',') ?? '';
+    }
+  }
 
   @override
   void dispose() {
@@ -36,31 +53,50 @@ class _FormTalhaoPageState extends State<FormTalhaoPage> {
     _areaController.dispose();
     _idadeController.dispose();
     _especieController.dispose();
+    _espacamentoController.dispose();
     super.dispose();
   }
 
-  Future<void> _salvarTalhao() async {
+  // <<< 3. FUNÇÃO DE SALVAR ATUALIZADA >>>
+  Future<void> _salvar() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isSaving = true);
 
-      final novoTalhao = Talhao(
+      final talhao = Talhao(
+        // Se estiver editando, usa o ID existente, senão é nulo para autoincremento
+        id: widget.isEditing ? widget.talhaoParaEditar!.id : null,
         fazendaId: widget.fazendaId,
         fazendaAtividadeId: widget.fazendaAtividadeId,
         nome: _nomeController.text.trim(),
         areaHa: double.tryParse(_areaController.text.replaceAll(',', '.')),
         idadeAnos: double.tryParse(_idadeController.text.replaceAll(',', '.')),
         especie: _especieController.text.trim(),
+        espacamento: _espacamentoController.text.trim().isNotEmpty ? _espacamentoController.text.trim() : null,
       );
 
       try {
         final dbHelper = DatabaseHelper.instance;
-        await dbHelper.insertTalhao(novoTalhao);
+        
+        if (widget.isEditing) {
+          // O método `update` do SQFlite precisa de um WHERE, então usamos o ID
+          await dbHelper.database.then((db) => db.update(
+            'talhoes',
+            talhao.toMap(),
+            where: 'id = ?',
+            whereArgs: [talhao.id],
+          ));
+        } else {
+          await dbHelper.insertTalhao(talhao);
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Talhão criado com sucesso!'), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text('Talhão ${widget.isEditing ? 'atualizado' : 'criado'} com sucesso!'), 
+              backgroundColor: Colors.green
+            ),
           );
-          Navigator.of(context).pop(true); // Retorna 'true' para recarregar a lista
+          Navigator.of(context).pop(true);
         }
       } catch (e) {
         if (mounted) {
@@ -79,8 +115,9 @@ class _FormTalhaoPageState extends State<FormTalhaoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // <<< 4. TÍTULO E BOTÃO DINÂMICOS >>>
       appBar: AppBar(
-        title: const Text('Novo Talhão'),
+        title: Text(widget.isEditing ? 'Editar Talhão' : 'Novo Talhão'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -110,6 +147,15 @@ class _FormTalhaoPageState extends State<FormTalhaoPage> {
                   labelText: 'Espécie (ex: Eucalipto)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.eco_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _espacamentoController,
+                decoration: const InputDecoration(
+                  labelText: 'Espaçamento (ex: 3x2)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.space_bar_outlined),
                 ),
               ),
               const SizedBox(height: 16),
@@ -148,7 +194,7 @@ class _FormTalhaoPageState extends State<FormTalhaoPage> {
               ),
               const SizedBox(height: 32),
               ElevatedButton.icon(
-                onPressed: _isSaving ? null : _salvarTalhao,
+                onPressed: _isSaving ? null : _salvar,
                 icon: _isSaving
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.save_outlined),

@@ -1,5 +1,6 @@
-// lib/pages/amostra/coleta_dados_page.dart (VERSÃO FINAL SEM WARNINGS)
+// lib/pages/amostra/coleta_dados_page.dart
 
+import 'dart:io'; // <<< IMPORT NECESSÁRIO PARA ARQUIVOS
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,7 +8,7 @@ import 'dart:math' as math;
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/pages/amostra/inventario_page.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/widgets/informacoes_adicionais_dialog.dart';
+import 'package:image_picker/image_picker.dart'; // <<< IMPORT DO IMAGE_PICKER
 
 enum FormaParcela { retangular, circular }
 
@@ -42,10 +43,13 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
   bool _salvando = false;
   FormaParcela _formaDaParcela = FormaParcela.retangular;
   double _areaCalculada = 0.0;
-  // bool _temArvoresColetadas = false; // <<< VARIÁVEL REMOVIDA DAQUI
   
   bool _isModoEdicao = false;
   bool _isVinculadoATalhao = false;
+
+  // <<< ESTADO PARA AS FOTOS >>>
+  final ImagePicker _picker = ImagePicker();
+  List<String> _imagePaths = [];
 
   @override
   void initState() {
@@ -61,7 +65,8 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
       _isModoEdicao = widget.parcelaParaEditar!.dbId != null;
       _parcelaAtual = widget.parcelaParaEditar!;
       _isVinculadoATalhao = _parcelaAtual.talhaoId != null;
-      _carregarDadosDaParcelaParaEdicao();
+      _imagePaths = List<String>.from(_parcelaAtual.photoPaths); // Carrega as fotos existentes
+      _preencherDadosIniciais();
     } else {
       _isModoEdicao = false;
       _isVinculadoATalhao = true;
@@ -75,12 +80,6 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
       );
       _preencherDadosIniciais();
     }
-  }
-  
-  Future<void> _carregarDadosDaParcelaParaEdicao() async {
-    // A variável _temArvoresColetadas não era necessária para a lógica final,
-    // então a verificação foi removida. O modo de edição já controla os botões.
-    _preencherDadosIniciais();
   }
 
   void _preencherDadosIniciais() {
@@ -132,7 +131,8 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     }
     setState(() => _areaCalculada = area);
   }
-
+  
+  // <<< LÓGICA DE CONSTRUÇÃO ATUALIZADA >>>
   Parcela _construirObjetoParcela() {
     return _parcelaAtual.copyWith(
       talhaoId: _parcelaAtual.talhaoId,
@@ -148,29 +148,36 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
       largura: _formaDaParcela == FormaParcela.retangular ? double.tryParse(_larguraController.text.replaceAll(',', '.')) : null,
       comprimento: _formaDaParcela == FormaParcela.retangular ? double.tryParse(_comprimentoController.text.replaceAll(',', '.')) : null,
       raio: _formaDaParcela == FormaParcela.circular ? double.tryParse(_raioController.text.replaceAll(',', '.')) : null,
+      photoPaths: _imagePaths, // Salva a lista de fotos
     );
   }
   
-  Future<void> _abrirDialogoInfoAdicionais() async {
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => InformacoesAdicionaisDialog(
-        espacamentoInicial: _parcelaAtual.espacamento,
-        idadeInicial: _parcelaAtual.idadeFloresta,
-        areaTalhaoInicial: _parcelaAtual.areaTalhao,
-      ),
-    );
+  // <<< FUNÇÃO DE DIÁLOGO REMOVIDA >>>
+  // Future<void> _abrirDialogoInfoAdicionais() async { ... }
+  
+  // <<< NOVA FUNÇÃO PARA SELECIONAR IMAGEM >>>
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 80, // Comprime a imagem para economizar espaço
+        maxWidth: 1024,   // Redimensiona a imagem
+      );
 
-    if (result != null) {
-      setState(() {
-        _parcelaAtual = _parcelaAtual.copyWith(
-          espacamento: result['espacamento'],
-          idadeFloresta: result['idade'],
-          areaTalhao: result['areaTalhao'],
-        );
-      });
+      if (pickedFile != null) {
+        setState(() {
+          _imagePaths.add(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if(mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao selecionar imagem: $e'), backgroundColor: Colors.red),
+          );
+      }
     }
   }
+
 
   Future<void> _salvarEIniciarColeta() async {
     if (!_formKey.currentState!.validate()) return;
@@ -244,7 +251,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     setState(() => _salvando = true);
     try {
       final parcelaEditada = _construirObjetoParcela();
-      await dbHelper.saveFullColeta(parcelaEditada, []); // Usar saveFullColeta para consistência
+      await dbHelper.saveFullColeta(parcelaEditada, _parcelaAtual.arvores);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alterações salvas com sucesso!'), backgroundColor: Colors.green));
         Navigator.of(context).pop(true);
@@ -326,20 +333,9 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
               _buildColetorCoordenadas(),
               const SizedBox(height: 24),
               
-              SizedBox(
-                height: 50,
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _abrirDialogoInfoAdicionais,
-                  icon: const Icon(Icons.library_books_outlined),
-                  label: const Text('Informações Adicionais'),
-                  style: OutlinedButton.styleFrom(
-                     foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
-                     side: BorderSide(color: Colors.grey.shade400),
-                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
+              // <<< BOTÃO DE INFORMAÇÕES ADICIONAIS REMOVIDO >>>
+              
+              _buildPhotoSection(), // <<< NOVA SEÇÃO DE FOTOS
 
               const SizedBox(height: 16),
               TextFormField(controller: _observacaoController, decoration: const InputDecoration(labelText: 'Observações da Parcela', border: OutlineInputBorder(), prefixIcon: Icon(Icons.comment), helperText: 'Opcional'), maxLines: 3),
@@ -445,4 +441,92 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
       ],
     );
   }
+  
+  // <<< NOVO WIDGET PARA A SEÇÃO DE FOTOS >>>
+  Widget _buildPhotoSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Fotos da Parcela', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade400),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              _imagePaths.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: Text('Nenhuma foto adicionada.'),
+                      ),
+                    )
+                  : GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemCount: _imagePaths.length,
+                      itemBuilder: (context, index) {
+                        return Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(File(_imagePaths[index]), fit: BoxFit.cover),
+                            ),
+                            Positioned(
+                              top: -8,
+                              right: -8,
+                              child: IconButton(
+                                icon: const CircleAvatar(
+                                  backgroundColor: Colors.white,
+                                  radius: 12,
+                                  child: Icon(Icons.close, color: Colors.red, size: 16),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _imagePaths.removeAt(index);
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: const Text('Câmera'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Galeria'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
 }
