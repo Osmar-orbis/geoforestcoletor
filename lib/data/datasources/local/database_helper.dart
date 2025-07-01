@@ -716,6 +716,14 @@ class DatabaseHelper {
     final maps = await db.query('parcelas', where: 'status = ? AND exportada = ?', whereArgs: [StatusParcela.concluida.name, 0]);
     return List.generate(maps.length, (i) => Parcela.fromMap(maps[i]));
   }
+  
+  // <<< NOVO MÉTODO ADICIONADO PARA O BACKUP >>>
+  // Busca TODAS as parcelas concluídas, ignorando se já foram exportadas
+  Future<List<Parcela>> getTodasAsParcelasConcluidasParaBackup() async {
+    final db = await database;
+    final maps = await db.query('parcelas', where: 'status = ?', whereArgs: [StatusParcela.concluida.name]);
+    return List.generate(maps.length, (i) => Parcela.fromMap(maps[i]));
+  }
 
   Future<void> marcarParcelasComoExportadas(List<int> ids) async {
     if (ids.isEmpty) return;
@@ -727,7 +735,7 @@ class DatabaseHelper {
       whereArgs: ids,
     );
   }
-
+  
   Future<String> importarColetaDeEquipe(String csvContent, int projetoIdAlvo) async {
     final db = await database;
     int parcelasImportadas = 0;
@@ -888,5 +896,29 @@ class DatabaseHelper {
       debugPrint("Erro ao importar projeto: $e");
       return "Erro ao importar: O arquivo pode estar mal formatado ou os dados são inválidos. ($e)";
     }
+  }
+  Future<List<CubagemArvore>> getUnexportedCubagens() async {
+    final db = await database;
+    final maps = await db.query('cubagens_arvores', where: 'exportada = ?', whereArgs: [0]);
+    return List.generate(maps.length, (i) => CubagemArvore.fromMap(maps[i]));
+  }
+
+  /// Busca TODAS as cubagens, ignorando se já foram exportadas (para backup).
+  Future<List<CubagemArvore>> getTodasCubagensParaBackup() async {
+    final db = await database;
+    final maps = await db.query('cubagens_arvores');
+    return List.generate(maps.length, (i) => CubagemArvore.fromMap(maps[i]));
+  }
+
+  /// Atualiza a flag 'exportada' para 1 nas cubagens especificadas.
+  Future<void> marcarCubagensComoExportadas(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.update(
+      'cubagens_arvores',
+      {'exportada': 1},
+      where: 'id IN (${List.filled(ids.length, '?').join(',')})',
+      whereArgs: ids,
+    );
   }
 }

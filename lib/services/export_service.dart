@@ -5,7 +5,7 @@ import 'dart:io';
 
 import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_archive/flutter_archive.dart';
+// Removi o import do flutter_archive que não estava sendo usado aqui para manter limpo.
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/analise_result_model.dart';
@@ -22,8 +22,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:proj4dart/proj4dart.dart' as proj4;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_archive/flutter_archive.dart';
+import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
 
 class ExportService {
+  
+  // =========================================================================
+  // <<< MÉTODO ORIGINAL (EXPORTAÇÃO PADRÃO) - SEM ALTERAÇÕES >>>
+  // =========================================================================
   Future<void> exportarDados(BuildContext context) async {
     final dbHelper = DatabaseHelper.instance;
     final permissionService = PermissionService();
@@ -42,6 +48,7 @@ class ExportService {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Buscando dados para exportação...')));
 
     try {
+      // Usa o método antigo que busca apenas parcelas não exportadas
       final List<Parcela> parcelas = await dbHelper.getUnexportedConcludedParcelas();
 
       if (parcelas.isEmpty) {
@@ -98,6 +105,7 @@ class ExportService {
       final pastaDia = Directory('${dir.path}/$pastaData');
       if (!await pastaDia.exists()) await pastaDia.create(recursive: true);
       
+      // Nome padrão do arquivo
       final fName = 'geoforest_export_coleta_${DateFormat('HH-mm-ss').format(hoje)}.csv';
       final path = '${pastaDia.path}/$fName';
       
@@ -106,6 +114,7 @@ class ExportService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).removeCurrentSnackBar();
         await Share.shareXFiles([XFile(path)], subject: 'Exportação GeoForest - Coleta de Campo');
+        // Ao final, marca as parcelas como exportadas
         await dbHelper.marcarParcelasComoExportadas(idsParaMarcar);
       }
     } catch (e, s) {
@@ -113,6 +122,102 @@ class ExportService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).removeCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha na exportação: ${e.toString()}'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  // =========================================================================
+  // <<< NOVO MÉTODO PARA O BACKUP COMPLETO >>>
+  // =========================================================================
+  Future<void> exportarTodasAsParcelasBackup(BuildContext context) async {
+    final dbHelper = DatabaseHelper.instance;
+    final permissionService = PermissionService();
+
+    final bool hasPermission = await permissionService.requestStoragePermission();
+    if (!hasPermission) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Permissão de acesso ao armazenamento negada.'),
+          backgroundColor: Colors.red,
+        ));
+      }
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Buscando dados para o backup completo...')));
+
+    try {
+      // *** 1. CHAMA O NOVO MÉTODO DO BANCO DE DADOS ***
+      final List<Parcela> parcelas = await dbHelper.getTodasAsParcelasConcluidasParaBackup();
+
+      if (parcelas.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).removeCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma parcela concluída encontrada para o backup.'), backgroundColor: Colors.orange));
+        }
+        return;
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gerando arquivo de backup...')));
+      }
+
+      // O resto da lógica de gerar o CSV é idêntica
+      final prefs = await SharedPreferences.getInstance();
+      final nomeLider = prefs.getString('nome_lider') ?? 'N/A';
+      final nomesAjudantes = prefs.getString('nomes_ajudantes') ?? 'N/A';
+      final nomeZona = prefs.getString('zona_utm_selecionada') ?? 'SIRGAS 2000 / UTM Zona 22S';
+      final codigoEpsg = zonasUtmSirgas2000[nomeZona]!;
+      final projWGS84 = proj4.Projection.get('EPSG:4326')!;
+      final projUTM = proj4.Projection.get('EPSG:$codigoEpsg')!;
+
+      List<List<dynamic>> rows = [];
+      rows.add(['Lider_Equipe', 'Ajudantes', 'ID_Db_Parcela', 'Codigo_Fazenda', 'Fazenda', 'Talhao', 'ID_Coleta_Parcela', 'Area_m2', 'Largura_m', 'Comprimento_m', 'Raio_m', 'Espacamento', 'Observacao_Parcela', 'Easting', 'Northing', 'Data_Coleta', 'Status_Parcela', 'Linha', 'Posicao_na_Linha', 'Fuste_Num', 'Codigo_Arvore', 'Codigo_Arvore_2', 'CAP_cm', 'Altura_m', 'Dominante']);
+      
+      for (var p in parcelas) {
+        String easting = '', northing = '';
+        if (p.latitude != null && p.longitude != null) {
+          var pUtm = projWGS84.transform(projUTM, proj4.Point(x: p.longitude!, y: p.latitude!));
+          easting = pUtm.x.toStringAsFixed(2);
+          northing = pUtm.y.toStringAsFixed(2);
+        }
+
+        final arvores = await dbHelper.getArvoresDaParcela(p.dbId!);
+        if (arvores.isEmpty) {
+          rows.add([nomeLider, nomesAjudantes, p.dbId, p.idFazenda, p.nomeFazenda, p.nomeTalhao, p.idParcela, p.areaMetrosQuadrados, p.largura, p.comprimento, p.raio, p.espacamento, p.observacao, easting, northing, p.dataColeta?.toIso8601String(), p.status.name, null, null, null, null, null, null, null, null]);
+        } else {
+          Map<String, int> fusteCounter = {};
+          for (final a in arvores) {
+            String key = '${a.linha}-${a.posicaoNaLinha}';
+            fusteCounter[key] = (fusteCounter[key] ?? 0) + 1;
+            rows.add([nomeLider, nomesAjudantes, p.dbId, p.idFazenda, p.nomeFazenda, p.nomeTalhao, p.idParcela, p.areaMetrosQuadrados, p.largura, p.comprimento, p.raio, p.espacamento, p.observacao, easting, northing, p.dataColeta?.toIso8601String(), p.status.name, a.linha, a.posicaoNaLinha, fusteCounter[key], a.codigo.name, a.codigo2?.name, a.cap, a.altura, a.dominante ? 'Sim' : 'Não']);
+          }
+        }
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final hoje = DateTime.now();
+      final pastaData = DateFormat('yyyy-MM-dd').format(hoje);
+      final pastaDia = Directory('${dir.path}/$pastaData');
+      if (!await pastaDia.exists()) await pastaDia.create(recursive: true);
+      
+      // *** 2. NOME DO ARQUIVO DIFERENTE ***
+      final fName = 'geoforest_BACKUP_COMPLETO_${DateFormat('HH-mm-ss').format(hoje)}.csv';
+      final path = '${pastaDia.path}/$fName';
+      
+      await File(path).writeAsString(const ListToCsvConverter().convert(rows));
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        await Share.shareXFiles([XFile(path)], subject: 'Backup Completo GeoForest');
+        // *** 3. NÃO MARCA AS PARCELAS COMO EXPORTADAS ***
+      }
+    } catch (e, s) {
+      debugPrint('Erro no backup completo: $e\n$s');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha no backup: ${e.toString()}'), backgroundColor: Colors.red));
       }
     }
   }
@@ -693,4 +798,77 @@ class ExportService {
       ));
     }
   }
+
+  Future<void> _gerarCsvCubagem(BuildContext context, List<CubagemArvore> cubagens, String nomeArquivo, bool marcarComoExportado) async {
+    final dbHelper = DatabaseHelper.instance;
+
+    if (cubagens.isEmpty) {
+        if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma cubagem encontrada para exportar.'), backgroundColor: Colors.orange));
+        }
+        return;
+    }
+
+    if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gerando CSV de cubagens...')));
+    }
+
+    List<List<dynamic>> rows = [];
+    rows.add(['id_db_arvore', 'id_fazenda', 'fazenda', 'talhao', 'identificador_arvore', 'classe', 'altura_total_m', 'tipo_medida_cap', 'valor_cap', 'altura_base_m', 'altura_medicao_secao_m', 'circunferencia_secao_cm', 'casca1_mm', 'casca2_mm', 'dsc_cm']);
+
+    final List<int> idsParaMarcar = [];
+
+    for (var arvore in cubagens) {
+        if (marcarComoExportado) {
+            idsParaMarcar.add(arvore.id!);
+        }
+        final secoes = await dbHelper.getSecoesPorArvoreId(arvore.id!);
+        if (secoes.isEmpty) {
+            rows.add([arvore.id, arvore.idFazenda, arvore.nomeFazenda, arvore.nomeTalhao, arvore.identificador, arvore.classe, arvore.alturaTotal, arvore.tipoMedidaCAP, arvore.valorCAP, arvore.alturaBase, null, null, null, null, null]);
+        } else {
+            for (var secao in secoes) {
+                rows.add([arvore.id, arvore.idFazenda, arvore.nomeFazenda, arvore.nomeTalhao, arvore.identificador, arvore.classe, arvore.alturaTotal, arvore.tipoMedidaCAP, arvore.valorCAP, arvore.alturaBase, secao.alturaMedicao, secao.circunferencia, secao.casca1_mm, secao.casca2_mm, secao.diametroSemCasca.toStringAsFixed(2)]);
+            }
+        }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final path = '${dir.path}/$nomeArquivo';
+    
+    await File(path).writeAsString(const ListToCsvConverter().convert(rows));
+
+    if (context.mounted) {
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        await Share.shareXFiles([XFile(path)], subject: 'Exportação de Cubagens GeoForest');
+        if (marcarComoExportado) {
+            await dbHelper.marcarCubagensComoExportadas(idsParaMarcar);
+        }
+    }
+}
+
+/// Exporta apenas as cubagens novas (não exportadas).
+Future<void> exportarNovasCubagens(BuildContext context) async {
+    final dbHelper = DatabaseHelper.instance;
+    try {
+        final cubagens = await dbHelper.getUnexportedCubagens();
+        final hoje = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now());
+        final nomeArquivo = 'geoforest_export_cubagens_$hoje.csv';
+        await _gerarCsvCubagem(context, cubagens, nomeArquivo, true);
+    } catch (e) {
+        if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao exportar cubagens: $e'), backgroundColor: Colors.red));
+    }
+}
+
+/// Exporta TODAS as cubagens como backup.
+Future<void> exportarTodasCubagensBackup(BuildContext context) async {
+    final dbHelper = DatabaseHelper.instance;
+    try {
+        final cubagens = await dbHelper.getTodasCubagensParaBackup();
+        final hoje = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now());
+        final nomeArquivo = 'geoforest_BACKUP_CUBAGENS_$hoje.csv';
+        await _gerarCsvCubagem(context, cubagens, nomeArquivo, false);
+    } catch (e) {
+        if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro no backup de cubagens: $e'), backgroundColor: Colors.red));
+    }
+}
 }

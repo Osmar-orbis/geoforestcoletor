@@ -27,66 +27,125 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _mostrarDialogoExportacao(BuildContext context) {
-  final exportService = ExportService();
-  final mapProvider = context.read<MapProvider>();
+    final exportService = ExportService();
+    final mapProvider = context.read<MapProvider>();
 
-  showModalBottomSheet(
-    context: context,
-    builder: (ctx) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
-            child: Text('Escolha o que deseja exportar', style: Theme.of(context).textTheme.titleLarge),
-          ),
-          ListTile(
-            leading: const Icon(Icons.table_rows_outlined, color: Colors.green),
-            title: const Text('Coletas de Parcela (CSV)'),
-            subtitle: const Text('Exporta os dados de parcelas e árvores.'),
-            onTap: () {
-              Navigator.of(ctx).pop();
-              exportService.exportarDados(context); 
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.table_chart_outlined, color: Colors.brown),
-            title: const Text('Cubagens Rigorosas (CSV)'),
-            subtitle: const Text('Exporta os dados de cubagens e seções.'),
-            onTap: () {
-              Navigator.of(ctx).pop();
-              // TODO: Implementar exportarCubagens no ExportService
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Função de exportar cubagens a ser implementada.')));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.map_outlined, color: Colors.purple),
-            title: const Text('Projeto do Mapa (GeoJSON)'),
-            subtitle: const Text('Exporta os polígonos e pontos do mapa atual.'),
-            onTap: () {
-              Navigator.of(ctx).pop();
-              // A verificação estava um pouco diferente, vamos usar a que você tinha
-              if (mapProvider.polygons.isEmpty && mapProvider.samplePoints.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não há projeto carregado no mapa para exportar.')));
-                return;
-              }
-              exportService.exportProjectAsGeoJson(
-                context: context,
-                // CORREÇÃO: Usar os nomes corretos do seu MapProvider
-                areaPolygons: mapProvider.polygons, // <-- CORREÇÃO AQUI
-                samplePoints: mapProvider.samplePoints,
-                farmName: mapProvider.currentTalhao?.fazendaNome ?? 'N/A', // <-- CORREÇÃO AQUI
-                blockName: mapProvider.currentTalhao?.nome ?? 'N/A',       // <-- CORREÇÃO AQUI
-              );
-            },
-          ),
-        ],
+    // Função interna para o sub-diálogo da coleta de parcelas
+    void _mostrarDialogoParcelas(BuildContext mainDialogContext) {
+      showDialog(
+        context: mainDialogContext,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('Tipo de Exportação de Coleta'),
+          content: const Text('Deseja exportar apenas os dados novos ou um backup completo de todas as coletas de parcela?'),
+          actions: [
+            TextButton(
+              child: const Text('Apenas Novas'),
+              onPressed: () {
+                Navigator.of(dialogCtx).pop();
+                exportService.exportarDados(context);
+              },
+            ),
+            ElevatedButton(
+              child: const Text('Todas (Backup)'),
+              onPressed: () {
+                Navigator.of(dialogCtx).pop();
+                exportService.exportarTodasAsParcelasBackup(context);
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Função interna para o sub-diálogo da cubagem
+    void _mostrarDialogoCubagem(BuildContext mainDialogContext) {
+      showDialog(
+        context: mainDialogContext,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('Tipo de Exportação de Cubagem'),
+          content: const Text('Deseja exportar apenas os dados novos ou um backup completo de todas as cubagens?'),
+          actions: [
+            TextButton(
+              child: const Text('Apenas Novas'),
+              onPressed: () {
+                Navigator.of(dialogCtx).pop();
+                exportService.exportarNovasCubagens(context);
+              },
+            ),
+            ElevatedButton(
+              child: const Text('Todas (Backup)'),
+              onPressed: () {
+                Navigator.of(dialogCtx).pop();
+                exportService.exportarTodasCubagensBackup(context);
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+              child: Text('Escolha o que deseja exportar', style: Theme.of(context).textTheme.titleLarge),
+            ),
+            
+            // --- Opção 1: Coletas de Parcela (chama o sub-diálogo) ---
+            ListTile(
+              leading: const Icon(Icons.table_rows_outlined, color: Colors.green),
+              title: const Text('Coletas de Parcela (CSV)'),
+              subtitle: const Text('Exporta os dados de parcelas e árvores.'),
+              onTap: () {
+                Navigator.of(ctx).pop(); // Fecha o menu principal
+                _mostrarDialogoParcelas(context); // Abre o diálogo de escolha para parcelas
+              },
+            ),
+
+            // --- Opção 2: Cubagens (chama o sub-diálogo) ---
+            ListTile(
+              leading: const Icon(Icons.table_chart_outlined, color: Colors.brown),
+              title: const Text('Cubagens Rigorosas (CSV)'),
+              subtitle: const Text('Exporta os dados de cubagens e seções.'),
+              onTap: () {
+                Navigator.of(ctx).pop(); // Fecha o menu principal
+                _mostrarDialogoCubagem(context); // Abre o diálogo de escolha para cubagens
+              },
+            ),
+            
+            const Divider(), // Separador visual
+            
+            // --- Opção 3: Mapa ---
+            ListTile(
+              leading: const Icon(Icons.map_outlined, color: Colors.purple),
+              title: const Text('Projeto do Mapa (GeoJSON)'),
+              subtitle: const Text('Exporta os polígonos e pontos do mapa atual.'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                if (mapProvider.polygons.isEmpty && mapProvider.samplePoints.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não há projeto carregado no mapa para exportar.')));
+                  return;
+                }
+                exportService.exportProjectAsGeoJson(
+                  context: context,
+                  areaPolygons: mapProvider.polygons,
+                  samplePoints: mapProvider.samplePoints,
+                  farmName: mapProvider.currentTalhao?.fazendaNome ?? 'N/A',
+                  blockName: mapProvider.currentTalhao?.nome ?? 'N/A',
+                );
+              },
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
