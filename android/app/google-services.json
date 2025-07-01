@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1072413984703",
+    "project_id": "geoforestfinal",
+    "storage_bucket": "geoforestfinal.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072413984703:android:f796dce25c5cff4b28030a",
+        "android_client_info": {
+          "package_name": "com.example.geoforestcoletor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDViWoq1UVYf9-ATIO_C0SI__bfvqsQB24"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
