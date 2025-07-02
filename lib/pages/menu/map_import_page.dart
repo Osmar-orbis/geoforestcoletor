@@ -1,9 +1,8 @@
-// lib/pages/menu/map_import_page.dart (COLE O ARQUIVO COMPLETO)
+// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA E CORRIGIDA)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/sample_point.dart';
 import 'package:geoforestcoletor/pages/amostra/coleta_dados_page.dart';
 import 'package:geoforestcoletor/providers/map_provider.dart';
@@ -13,54 +12,34 @@ import 'package:provider/provider.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 
 class MapImportPage extends StatefulWidget {
-  final Atividade atividade;
-  const MapImportPage({super.key, required this.atividade});
+  // O construtor agora é simples, sem parâmetros.
+  const MapImportPage({super.key});
 
   @override
   State<MapImportPage> createState() => _MapImportPageState();
 }
 
-// =========================================================================
-// <<< ALTERAÇÃO 3.1: ADICIONANDO 'with RouteAware' >>>
-// =========================================================================
 class _MapImportPageState extends State<MapImportPage> with RouteAware {
   final _mapController = MapController();
-  bool _isInitialLoad = true;
 
-  // =========================================================================
-  // <<< ALTERAÇÃO 3.2: IMPLEMENTANDO O CICLO DE VIDA DO ROUTEAWARE >>>
-  // =========================================================================
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
-    // Inscreve esta tela no observador de rotas
     MapProvider.routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
-    
-    // Limpa os dados na primeira vez que a tela é construída
-    if (_isInitialLoad) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<MapProvider>().clearAllMapData();
-      });
-      _isInitialLoad = false;
-    }
   }
   
-  // Este método é chamado quando voltamos para esta tela
   @override
   void didPopNext() {
     super.didPopNext();
     debugPrint("Mapa visível novamente, recarregando os dados das amostras...");
-    context.read<MapProvider>().loadSamplesParaAtividade(widget.atividade);
+    context.read<MapProvider>().loadSamplesParaAtividade();
   }
 
   @override
   void dispose() {
-    // Remove a inscrição para evitar memory leaks
     MapProvider.routeObserver.unsubscribe(this);
     super.dispose();
   }
-  // =========================================================================
 
   Color _getMarkerColor(SampleStatus status) {
     switch (status) {
@@ -80,7 +59,7 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
 
   Future<void> _handleImport() async {
     final provider = context.read<MapProvider>();
-    final resultMessage = await provider.processarCargaDeAtividade(widget.atividade);
+    final resultMessage = await provider.processarCargaDeAtividade();
     
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(resultMessage), duration: const Duration(seconds: 5)));
@@ -188,8 +167,10 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
   }
 
   AppBar _buildAppBar(MapProvider mapProvider) {
+    final atividadeTipo = mapProvider.currentAtividade?.tipo ?? 'Planejamento';
+
     return AppBar(
-      title: Text('Planejamento: ${widget.atividade.tipo}'),
+      title: Text('Planejamento: $atividadeTipo'),
       actions: [
         if(mapProvider.polygons.isNotEmpty)
           IconButton(

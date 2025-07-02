@@ -1,4 +1,4 @@
-// lib/pages/amostra/inventario_page.dart (VERSÃO COM FAB CORRIGIDO)
+// lib/pages/amostra/inventario_page.dart (VERSÃO FINAL E CORRETA)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
@@ -29,6 +29,9 @@ class _InventarioPageState extends State<InventarioPage> {
   bool _isSaving = false;
   bool _mostrandoApenasDominantes = false;
   bool _listaInvertida = false;
+  
+  // <<< ESTADO QUE CONTROLA O MODO DE VISUALIZAÇÃO >>>
+  bool _isReadOnly = false;
 
   @override
   void initState() {
@@ -37,18 +40,18 @@ class _InventarioPageState extends State<InventarioPage> {
     _dataLoadingFuture = _carregarDadosIniciais();
   }
 
+  // <<< LÓGICA DE CARREGAMENTO CORRIGIDA >>>
   Future<bool> _carregarDadosIniciais() async {
+    // Apenas lê o status da parcela, NUNCA o altera ao carregar.
     if (_parcelaAtual.status == StatusParcela.concluida) {
-      _parcelaAtual.status = StatusParcela.emAndamento;
-      await dbHelper.updateParcelaStatus(_parcelaAtual.dbId!, StatusParcela.emAndamento);
-      
-      if(mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Parcela reaberta para edição.'),
-            backgroundColor: Colors.orange,
-          ));
-        });
+      _isReadOnly = true;
+    } else {
+      _isReadOnly = false;
+      // Garante que, se não estiver concluída, o status seja "Em Andamento".
+      // Isso é seguro, pois a ColetaDadosPage já lida com o estado "concluído".
+      if (_parcelaAtual.status != StatusParcela.emAndamento) {
+        _parcelaAtual.status = StatusParcela.emAndamento;
+        await dbHelper.updateParcelaStatus(_parcelaAtual.dbId!, StatusParcela.emAndamento);
       }
     }
 
@@ -59,14 +62,27 @@ class _InventarioPageState extends State<InventarioPage> {
     return true;
   }
   
-  void _navegarParaDashboard() {
-    if (_parcelaAtual.dbId == null) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DashboardPage(parcelaId: _parcelaAtual.dbId!),
-      ),
-    );
+  // <<< NOVA FUNÇÃO PARA REABRIR A PARCELA DE FORMA INTENCIONAL >>>
+  Future<void> _reabrirParaEdicao() async {
+    setState(() => _isSaving = true);
+    try {
+      _parcelaAtual.status = StatusParcela.emAndamento;
+      await dbHelper.updateParcelaStatus(_parcelaAtual.dbId!, StatusParcela.emAndamento);
+      if (mounted) {
+        setState(() {
+          _isReadOnly = false;
+          _isSaving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Parcela reaberta para edição.'),
+          backgroundColor: Colors.orange,
+        ));
+      }
+    } finally {
+      if (mounted && _isSaving) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   Future<void> _concluirColeta() async {
@@ -89,10 +105,49 @@ class _InventarioPageState extends State<InventarioPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Parcela concluída com sucesso!'), 
-        backgroundColor: Colors.blue
+        backgroundColor: Colors.green
       ));
       Navigator.of(context).pop(true); 
     }
+  }
+
+  Future<void> _salvarEstadoAtual({bool showSnackbar = true, bool concluir = false}) async {
+    if (_isSaving) return;
+    if (mounted) setState(() => _isSaving = true);
+    try {
+      if (concluir) {
+        _parcelaAtual.status = StatusParcela.concluida;
+        setState(() => _isReadOnly = true); // Bloqueia a tela após concluir
+        _identificarArvoresDominantes();
+      }
+      _arvoresColetadas.sort((a, b) {
+        int compLinha = a.linha.compareTo(b.linha);
+        if (compLinha != 0) return compLinha;
+        int compPos = a.posicaoNaLinha.compareTo(b.posicaoNaLinha);
+        if (compPos != 0) return compPos;
+        return (a.id ?? 0).compareTo(b.id ?? 0);
+      });
+      await dbHelper.saveFullColeta(_parcelaAtual, _arvoresColetadas);
+      if (mounted && showSnackbar) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Progresso salvo!'), duration: Duration(seconds: 2), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // --- O restante do arquivo (funções de navegação, deleção, diálogo, build, etc.) permanece o mesmo, mas com as devidas verificações do `_isReadOnly` ---
+
+  void _navegarParaDashboard() {
+    if (_parcelaAtual.dbId == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DashboardPage(parcelaId: _parcelaAtual.dbId!),
+      ),
+    );
   }
 
   Future<void> _deletarArvore(BuildContext context, Arvore arvore) async {
@@ -236,32 +291,6 @@ class _InventarioPageState extends State<InventarioPage> {
       await _processarResultadoDialogo(result, indexOriginal: indexOriginal);
     }
   }
-  
-  Future<void> _salvarEstadoAtual({bool showSnackbar = true, bool concluir = false}) async {
-    if (_isSaving) return;
-    if (mounted) setState(() => _isSaving = true);
-    try {
-      if (concluir) {
-        _parcelaAtual.status = StatusParcela.concluida;
-        _identificarArvoresDominantes();
-      }
-      _arvoresColetadas.sort((a, b) {
-        int compLinha = a.linha.compareTo(b.linha);
-        if (compLinha != 0) return compLinha;
-        int compPos = a.posicaoNaLinha.compareTo(b.posicaoNaLinha);
-        if (compPos != 0) return compPos;
-        return (a.id ?? 0).compareTo(b.id ?? 0);
-      });
-      await dbHelper.saveFullColeta(_parcelaAtual, _arvoresColetadas);
-      if (mounted && showSnackbar) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Progresso salvo!'), duration: Duration(seconds: 2), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: $e'), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
 
   void _identificarArvoresDominantes() {
     for (var arvore in _arvoresColetadas) {
@@ -353,21 +382,30 @@ class _InventarioPageState extends State<InventarioPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Coleta da Parcela'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bar_chart),
-            tooltip: 'Ver Relatório da Parcela',
-            onPressed: _arvoresColetadas.isEmpty ? null : _navegarParaDashboard,
-          ),
-          if (_isSaving)
-            const Padding(padding: EdgeInsets.only(right: 16.0), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))))
-          else ...[
-            IconButton(icon: const Icon(Icons.swap_vert), tooltip: 'Inverter Ordem da Lista', onPressed: () => setState(() => _listaInvertida = !_listaInvertida)),
-            IconButton(icon: const Icon(Icons.analytics_outlined), tooltip: 'Analisar Parcela', onPressed: _arvoresColetadas.isEmpty ? null : _analisarParcelaInteira),
-            IconButton(icon: const Icon(Icons.save_outlined), tooltip: 'Salvar Progresso', onPressed: () => _salvarEstadoAtual()),
-            IconButton(icon: const Icon(Icons.check_circle_outline), tooltip: 'Concluir e Salvar Parcela', onPressed: _concluirColeta),
-          ],
-        ],
+        // <<< APPBAR DINÂMICA BASEADA NO ESTADO READONLY >>>
+        actions: _isReadOnly 
+          ? [ // Ações para o modo de visualização
+              IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'Reabrir para Edição',
+                onPressed: _reabrirParaEdicao,
+              ),
+              IconButton(
+                icon: const Icon(Icons.bar_chart),
+                tooltip: 'Ver Relatório da Parcela',
+                onPressed: _arvoresColetadas.isEmpty ? null : _navegarParaDashboard,
+              ),
+            ]
+          : [ // Ações para o modo de edição
+              if (_isSaving)
+                const Padding(padding: EdgeInsets.only(right: 16.0), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))))
+              else ...[
+                IconButton(icon: const Icon(Icons.swap_vert), tooltip: 'Inverter Ordem da Lista', onPressed: () => setState(() => _listaInvertida = !_listaInvertida)),
+                IconButton(icon: const Icon(Icons.analytics_outlined), tooltip: 'Analisar Parcela', onPressed: _arvoresColetadas.isEmpty ? null : _analisarParcelaInteira),
+                IconButton(icon: const Icon(Icons.save_outlined), tooltip: 'Salvar Progresso', onPressed: () => _salvarEstadoAtual()),
+                IconButton(icon: const Icon(Icons.check_circle_outline), tooltip: 'Concluir e Salvar Parcela', onPressed: _concluirColeta),
+              ],
+            ],
       ),
       body: FutureBuilder<bool>(
         future: _dataLoadingFuture,
@@ -392,15 +430,23 @@ class _InventarioPageState extends State<InventarioPage> {
 
           return Column(
             children: [
+              if (_isReadOnly)
+                Container(
+                  color: Colors.amber.shade100,
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 18, color: Colors.amber.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text("Parcela concluída (modo de visualização).", style: TextStyle(color: Colors.amber.shade900))),
+                    ],
+                  ),
+                ),
               _buildSummaryCard(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 8.0),
-                child: SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () {if (!_mostrandoApenasDominantes) _identificarArvoresDominantes(); setState(() => _mostrandoApenasDominantes = !_mostrandoApenasDominantes);}, icon: Icon(_mostrandoApenasDominantes ? Icons.filter_list_off : Icons.filter_list), label: Text(_mostrandoApenasDominantes ? 'Mostrar Todas' : 'Encontrar Dominantes'))),
-              ),
               _buildHeaderRow(),
               Expanded(
                 child: _arvoresColetadas.isEmpty
-                  ? const Center(child: Text('Clique no botão "+" para adicionar a primeira árvore.', style: TextStyle(color: Colors.grey, fontSize: 16)))
+                  ? Center(child: Text(_isReadOnly ? 'Esta parcela foi finalizada sem árvores.' : 'Clique no botão "+" para adicionar a primeira árvore.', style: const TextStyle(color: Colors.grey, fontSize: 16)))
                   : SlidableAutoCloseBehavior(
                       child: ListView.builder(
                         padding: EdgeInsets.zero,
@@ -409,7 +455,8 @@ class _InventarioPageState extends State<InventarioPage> {
                           final arvore = listaExibida[index];
                           return Slidable(
                             key: ValueKey(arvore.id ?? arvore.hashCode),
-                            endActionPane: ActionPane(
+                            // <<< DESABILITA EDIÇÃO EM MODO READONLY >>>
+                            endActionPane: _isReadOnly ? null : ActionPane(
                               motion: const StretchMotion(),
                               extentRatio: 0.25,
                               children: [
@@ -423,7 +470,7 @@ class _InventarioPageState extends State<InventarioPage> {
                               ],
                             ),
                             child: InkWell(
-                              onTap: () => _abrirFormularioParaEditar(arvore),
+                              onTap: _isReadOnly ? null : () => _abrirFormularioParaEditar(arvore),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
                                 decoration: BoxDecoration(
@@ -454,7 +501,8 @@ class _InventarioPageState extends State<InventarioPage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      // <<< ESCONDE O FAB EM MODO READONLY >>>
+      floatingActionButton: _isReadOnly ? null : FloatingActionButton.extended(
         onPressed: () => _adicionarNovaArvore(),
         tooltip: 'Adicionar Árvore',
         icon: const Icon(Icons.add),

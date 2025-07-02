@@ -1,7 +1,6 @@
-// lib/providers/map_provider.dart (COLE O ARQUIVO COMPLETO)
+// lib/providers/map_provider.dart (VERSÃO COMPLETA E CORRIGIDA)
 
 import 'dart:async';
-import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -24,17 +23,12 @@ class MapProvider with ChangeNotifier {
   final _dbHelper = DatabaseHelper.instance;
   final _samplingService = SamplingService();
   
-  // =======================================================================
-  // <<< ALTERAÇÃO 1: ADICIONANDO O ROUTEOBSERVER ESTÁTICO >>>
-  // Isso permitirá que qualquer tela se inscreva para eventos de navegação.
-  // =======================================================================
   static final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
   List<ImportedFeature> _importedFeatures = [];
   List<SamplePoint> _samplePoints = [];
   bool _isLoading = false;
   Atividade? _currentAtividade;
-  Talhao? _currentTalhao; 
   MapLayerType _currentLayer = MapLayerType.satelite;
   Position? _currentUserPosition;
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -49,7 +43,6 @@ class MapProvider with ChangeNotifier {
   List<SamplePoint> get samplePoints => _samplePoints;
   bool get isLoading => _isLoading;
   Atividade? get currentAtividade => _currentAtividade;
-  Talhao? get currentTalhao => _currentTalhao;
   MapLayerType get currentLayer => _currentLayer;
   Position? get currentUserPosition => _currentUserPosition;
   bool get isFollowingUser => _isFollowingUser;
@@ -123,19 +116,20 @@ class MapProvider with ChangeNotifier {
     _importedFeatures = [];
     _samplePoints = [];
     _currentAtividade = null;
-    _currentTalhao = null;
     if (_isFollowingUser) toggleFollowingUser();
     if (_isDrawing) cancelDrawing();
     notifyListeners();
   }
 
-  void setCurrentTalhao(Talhao talhao) {
-    _currentTalhao = talhao;
+  void setCurrentAtividade(Atividade atividade) {
+    _currentAtividade = atividade;
   }
 
-  Future<String> processarCargaDeAtividade(Atividade atividade) async {
+  Future<String> processarCargaDeAtividade() async {
+    if (_currentAtividade == null) {
+      return "Erro: Nenhuma atividade selecionada para o planejamento.";
+    }
     _setLoading(true);
-    _currentAtividade = atividade;
     _importedFeatures = [];
     _samplePoints = [];
     notifyListeners();
@@ -144,12 +138,11 @@ class MapProvider with ChangeNotifier {
 
     if (features.isEmpty) {
       _setLoading(false);
-      return "Nenhum talhão válido foi encontrado no arquivo GeoJSON. Verifique o formato e as propriedades.";
+      return "Nenhum talhão válido foi encontrado no arquivo GeoJSON.";
     }
 
     int fazendasCriadas = 0;
     int talhoesCriados = 0;
-    
     final Map<String, Fazenda> fazendaCache = {};
     
     for (final feature in features) {
@@ -157,16 +150,13 @@ class MapProvider with ChangeNotifier {
       final fazendaIdentificador = (props['fazenda_id'] ?? props['fazenda_nome'] ?? props['fazenda'])?.toString();
       final talhaoIdentificador = (props['talhao_nome'] ?? props['talhao_id'] ?? props['talhao'])?.toString();
       
-      if (fazendaIdentificador == null || talhaoIdentificador == null) {
-        debugPrint("Aviso: Pulando polígono por falta de identificador de fazenda/talhão. Propriedades encontradas: $props");
-        continue;
-      }
+      if (fazendaIdentificador == null || talhaoIdentificador == null) continue;
 
       try {
         if (!fazendaCache.containsKey(fazendaIdentificador)) {
           final fazenda = Fazenda(
             id: fazendaIdentificador,
-            atividadeId: atividade.id!,
+            atividadeId: _currentAtividade!.id!,
             nome: props['fazenda']?.toString() ?? fazendaIdentificador,
             municipio: props['municipio']?.toString() ?? 'N/I',
             estado: props['estado']?.toString() ?? 'N/I',
@@ -178,7 +168,7 @@ class MapProvider with ChangeNotifier {
         
         Talhao talhao = Talhao(
           fazendaId: fazendaIdentificador,
-          fazendaAtividadeId: atividade.id!,
+          fazendaAtividadeId: _currentAtividade!.id!,
           nome: talhaoIdentificador,
           especie: props['especie']?.toString(),
           areaHa: (props['area_ha'] as num?)?.toDouble(),
@@ -191,26 +181,21 @@ class MapProvider with ChangeNotifier {
         feature.properties['db_fazenda_nome'] = fazendaCache[fazendaIdentificador]?.nome;
         feature.properties['db_talhao_nome'] = talhaoIdentificador;
         talhoesCriados++;
-
       } catch (e) {
         _setLoading(false);
-        return "Erro ao processar o talhão '$talhaoIdentificador': ${e.toString()}. Verifique os dados e tente novamente.";
+        return "Erro ao processar o talhão '$talhaoIdentificador': ${e.toString()}.";
       }
     }
     
     _importedFeatures = features;
     _setLoading(false);
     
-    return "Importação concluída!\n- ${features.length} polígonos de talhão carregados.\n- ${fazendasCriadas} novas fazendas criadas.\n- ${talhoesCriados} novos talhões criados.";
+    return "Importação concluída: ${features.length} polígonos, ${fazendasCriadas} novas fazendas e ${talhoesCriados} novos talhões criados.";
   }
 
   Future<String> gerarAmostrasParaAtividade({required double hectaresPerSample}) async {
-    if (_importedFeatures.isEmpty) {
-      return "Nenhum polígono de talhão carregado. Importe uma carga primeiro.";
-    }
-    if (_currentAtividade == null) {
-      return "Erro: Atividade atual não definida.";
-    }
+    if (_importedFeatures.isEmpty) return "Nenhum polígono de talhão carregado.";
+    if (_currentAtividade == null) return "Erro: Atividade atual não definida.";
 
     _setLoading(true);
 
@@ -221,7 +206,7 @@ class MapProvider with ChangeNotifier {
 
     if (pontosGerados.isEmpty) {
       _setLoading(false);
-      return "Nenhum ponto de amostra pôde ser gerado dentro dos polígonos.";
+      return "Nenhum ponto de amostra pôde ser gerado.";
     }
 
     final List<Parcela> parcelasParaSalvar = [];
@@ -230,41 +215,37 @@ class MapProvider with ChangeNotifier {
     for (final ponto in pontosGerados) {
       final props = ponto.properties;
       final talhaoIdSalvo = props['db_talhao_id'] as int?;
-
       if (talhaoIdSalvo != null) {
          parcelasParaSalvar.add(Parcela(
           talhaoId: talhaoIdSalvo,
-          idParcela: pointIdCounter.toString(),
-          areaMetrosQuadrados: 0,
-          latitude: ponto.position.latitude,
-          longitude: ponto.position.longitude,
-          status: StatusParcela.pendente,
-          dataColeta: DateTime.now(),
+          idParcela: pointIdCounter.toString(), areaMetrosQuadrados: 0,
+          latitude: ponto.position.latitude, longitude: ponto.position.longitude,
+          status: StatusParcela.pendente, dataColeta: DateTime.now(),
           nomeFazenda: props['db_fazenda_nome']?.toString(),
           idFazenda: props['db_fazenda_id']?.toString(),
           nomeTalhao: props['db_talhao_nome']?.toString(),
         ));
         pointIdCounter++;
-      } else {
-        debugPrint("Aviso: Talhão com propriedades '$props' não encontrado no banco para o ponto gerado.");
       }
     }
 
     if (parcelasParaSalvar.isNotEmpty) {
       await _dbHelper.saveBatchParcelas(parcelasParaSalvar);
-      await loadSamplesParaAtividade(_currentAtividade!);
+      await loadSamplesParaAtividade();
     }
     
     _setLoading(false);
-    return "${parcelasParaSalvar.length} amostras foram geradas e salvas com sucesso.";
+    return "${parcelasParaSalvar.length} amostras foram geradas e salvas.";
   }
   
-  Future<void> loadSamplesParaAtividade(Atividade atividade) async {
+  Future<void> loadSamplesParaAtividade() async {
+    if (_currentAtividade == null) return;
+    
     _setLoading(true);
-    _samplePoints = [];
-    final fazendas = await _dbHelper.getFazendasDaAtividade(atividade.id!);
+    _samplePoints.clear();
+    final fazendas = await _dbHelper.getFazendasDaAtividade(_currentAtividade!.id!);
     for (final fazenda in fazendas) {
-      final talhoes = await _dbHelper.getTalhoesDaFazenda(fazenda.id, atividade.id!);
+      final talhoes = await _dbHelper.getTalhoesDaFazenda(fazenda.id, _currentAtividade!.id!);
       for (final talhao in talhoes) {
         final parcelas = await _dbHelper.getParcelasDoTalhao(talhao.id!);
         for (final p in parcelas) {

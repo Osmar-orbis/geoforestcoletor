@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/projeto_model.dart';
-// =========================================================================
-// <<< 1. IMPORT DA PÁGINA DO MAPA ADICIONADO >>>
-// =========================================================================
 import 'package:geoforestcoletor/pages/menu/map_import_page.dart';
+import 'package:geoforestcoletor/providers/map_provider.dart';
+import 'package:provider/provider.dart';
 
 class SelecaoAtividadeMapaPage extends StatefulWidget {
   const SelecaoAtividadeMapaPage({super.key});
@@ -42,15 +41,20 @@ class _SelecaoAtividadeMapaPageState extends State<SelecaoAtividadeMapaPage> {
   }
 
   void _navegarParaMapa(Atividade atividade) {
-    // =========================================================================
-    // <<< 2. NAVEGAÇÃO REAL IMPLEMENTADA AQUI >>>
-    // Agora, ao invés de um print, ele navega para a página do mapa,
-    // passando o objeto 'atividade' como parâmetro.
-    // =========================================================================
+    final mapProvider = Provider.of<MapProvider>(context, listen: false);
+
+    // 1. Limpa qualquer estado antigo do mapa.
+    mapProvider.clearAllMapData();
+    // 2. Define a atividade atual no provider.
+    mapProvider.setCurrentAtividade(atividade);
+    // 3. Carrega as amostras existentes para essa atividade, se houver.
+    mapProvider.loadSamplesParaAtividade();
+
+    // 4. Navega para a página do mapa (que agora não precisa de parâmetros).
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MapImportPage(atividade: atividade),
+        builder: (context) => const MapImportPage(),
       ),
     );
   }

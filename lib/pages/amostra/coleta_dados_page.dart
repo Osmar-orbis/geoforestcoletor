@@ -1,14 +1,14 @@
-// lib/pages/amostra/coleta_dados_page.dart
+// lib/pages/amostra/coleta_dados_page.dart (VERSÃO FINAL, SEGURA E CORRIGIDA)
 
-import 'dart:io'; // <<< IMPORT NECESSÁRIO PARA ARQUIVOS
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:math' as math;
+import 'dart:math' as math; // <<< IMPORT DA BIBLIOTECA DE MATEMÁTICA
 import 'package:geoforestcoletor/models/parcela_model.dart';
+import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/amostra/inventario_page.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:image_picker/image_picker.dart'; // <<< IMPORT DO IMAGE_PICKER
+import 'package:image_picker/image_picker.dart';
 
 enum FormaParcela { retangular, circular }
 
@@ -42,55 +42,53 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
   String? _erroLocalizacao;
   bool _salvando = false;
   FormaParcela _formaDaParcela = FormaParcela.retangular;
-  double _areaCalculada = 0.0;
   
   bool _isModoEdicao = false;
   bool _isVinculadoATalhao = false;
 
-  // <<< ESTADO PARA AS FOTOS >>>
   final ImagePicker _picker = ImagePicker();
-  List<String> _imagePaths = [];
+  
+  bool _isReadOnly = false;
 
   @override
   void initState() {
     super.initState();
     _setupInitialData();
-    _larguraController.addListener(_calcularArea);
-    _comprimentoController.addListener(_calcularArea);
-    _raioController.addListener(_calcularArea);
   }
 
   void _setupInitialData() {
     if (widget.parcelaParaEditar != null) {
-      _isModoEdicao = widget.parcelaParaEditar!.dbId != null;
+      _isModoEdicao = true;
       _parcelaAtual = widget.parcelaParaEditar!;
       _isVinculadoATalhao = _parcelaAtual.talhaoId != null;
-      _imagePaths = List<String>.from(_parcelaAtual.photoPaths); // Carrega as fotos existentes
-      _preencherDadosIniciais();
+      
+      if (_parcelaAtual.status == StatusParcela.concluida) {
+        _isReadOnly = true;
+      }
+      _preencherControllersComDadosAtuais();
     } else {
       _isModoEdicao = false;
+      _isReadOnly = false;
       _isVinculadoATalhao = true;
       _parcelaAtual = Parcela(
         talhaoId: widget.talhao!.id,
-        idParcela: '',
-        areaMetrosQuadrados: 0,
+        idParcela: '', areaMetrosQuadrados: 0,
         dataColeta: DateTime.now(),
         nomeFazenda: widget.talhao!.fazendaNome,
         nomeTalhao: widget.talhao!.nome,
       );
-      _preencherDadosIniciais();
+      _preencherControllersComDadosAtuais();
     }
   }
 
-  void _preencherDadosIniciais() {
+  void _preencherControllersComDadosAtuais() {
     final p = _parcelaAtual;
     _nomeFazendaController.text = p.nomeFazenda ?? '';
     _talhaoParcelaController.text = p.nomeTalhao ?? '';
     _idFazendaController.text = p.idFazenda ?? '';
     _idParcelaController.text = p.idParcela;
     _observacaoController.text = p.observacao ?? '';
-    _areaCalculada = p.areaMetrosQuadrados;
-
+    
     if (p.largura != null) _larguraController.text = p.largura.toString().replaceAll('.', ',');
     if (p.comprimento != null) _comprimentoController.text = p.comprimento.toString().replaceAll('.', ',');
     if (p.raio != null) {
@@ -99,10 +97,11 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     } else {
       _formaDaParcela = FormaParcela.retangular;
     }
-
+    
     if (p.latitude != null && p.longitude != null) {
       _posicaoAtual = Position(latitude: p.latitude!, longitude: p.longitude!, timestamp: DateTime.now(), accuracy: 0.0, altitude: 0.0, altitudeAccuracy: 0.0, heading: 0.0, headingAccuracy: 0.0, speed: 0.0, speedAccuracy: 0.0);
     }
+    
     if (mounted) setState(() {});
   }
 
@@ -118,56 +117,49 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     _raioController.dispose();
     super.dispose();
   }
-
-  void _calcularArea() {
-    double area = 0.0;
-    if (_formaDaParcela == FormaParcela.retangular) {
-      final largura = double.tryParse(_larguraController.text.replaceAll(',', '.')) ?? 0;
-      final comprimento = double.tryParse(_comprimentoController.text.replaceAll(',', '.')) ?? 0;
-      area = largura * comprimento;
-    } else {
-      final raio = double.tryParse(_raioController.text.replaceAll(',', '.')) ?? 0;
-      area = math.pi * raio * raio;
-    }
-    setState(() => _areaCalculada = area);
-  }
   
-  // <<< LÓGICA DE CONSTRUÇÃO ATUALIZADA >>>
-  Parcela _construirObjetoParcela() {
+  // <<< FUNÇÃO DE SALVAMENTO BLINDADA CONTRA PERDA DE DADOS >>>
+  Parcela _construirObjetoParcelaParaSalvar() {
+    double? largura, comprimento, raio;
+    double area = 0.0;
+
+    if (_formaDaParcela == FormaParcela.retangular) {
+        largura = double.tryParse(_larguraController.text.replaceAll(',', '.'));
+        comprimento = double.tryParse(_comprimentoController.text.replaceAll(',', '.'));
+        area = (largura ?? 0) * (comprimento ?? 0);
+    } else {
+        raio = double.tryParse(_raioController.text.replaceAll(',', '.'));
+        area = math.pi * math.pow(raio ?? 0, 2);
+    }
+
+    // Parte sempre dos dados existentes em _parcelaAtual e só aplica as mudanças
     return _parcelaAtual.copyWith(
-      talhaoId: _parcelaAtual.talhaoId,
+      idParcela: _idParcelaController.text.trim(),
       nomeFazenda: _nomeFazendaController.text.trim(),
       idFazenda: _idFazendaController.text.trim().isNotEmpty ? _idFazendaController.text.trim() : null,
       nomeTalhao: _talhaoParcelaController.text.trim(),
-      idParcela: _idParcelaController.text.trim(),
-      areaMetrosQuadrados: _areaCalculada,
-      observacao: _observacaoController.text.trim().isNotEmpty ? _observacaoController.text.trim() : null,
+      observacao: _observacaoController.text.trim(),
+
+      // Atualiza a geometria e a área
+      areaMetrosQuadrados: area,
+      largura: largura,
+      comprimento: comprimento,
+      raio: raio,
+
+      // Atualiza o GPS APENAS se uma nova posição foi obtida
       latitude: _posicaoAtual?.latitude,
       longitude: _posicaoAtual?.longitude,
-      dataColeta: _parcelaAtual.dataColeta ?? DateTime.now(),
-      largura: _formaDaParcela == FormaParcela.retangular ? double.tryParse(_larguraController.text.replaceAll(',', '.')) : null,
-      comprimento: _formaDaParcela == FormaParcela.retangular ? double.tryParse(_comprimentoController.text.replaceAll(',', '.')) : null,
-      raio: _formaDaParcela == FormaParcela.circular ? double.tryParse(_raioController.text.replaceAll(',', '.')) : null,
-      photoPaths: _imagePaths, // Salva a lista de fotos
     );
   }
   
-  // <<< FUNÇÃO DE DIÁLOGO REMOVIDA >>>
-  // Future<void> _abrirDialogoInfoAdicionais() async { ... }
-  
-  // <<< NOVA FUNÇÃO PARA SELECIONAR IMAGEM >>>
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        imageQuality: 80, // Comprime a imagem para economizar espaço
-        maxWidth: 1024,   // Redimensiona a imagem
+        source: source, imageQuality: 80, maxWidth: 1024,
       );
 
       if (pickedFile != null) {
-        setState(() {
-          _imagePaths.add(pickedFile.path);
-        });
+        setState(() => _parcelaAtual.photoPaths.add(pickedFile.path));
       }
     } catch (e) {
       if(mounted) {
@@ -178,10 +170,36 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     }
   }
 
+  Future<void> _reabrirParaEdicao() async {
+    setState(() => _salvando = true);
+    try {
+      final parcelaReaberta = _parcelaAtual.copyWith(status: StatusParcela.emAndamento);
+      await dbHelper.updateParcela(parcelaReaberta);
+      
+      if(mounted) {
+        setState(() {
+          _parcelaAtual = parcelaReaberta;
+          _isReadOnly = false;
+          _salvando = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Parcela reaberta. Agora você pode editar os dados.'),
+          backgroundColor: Colors.orange,
+        ));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao reabrir parcela: $e'), backgroundColor: Colors.red));
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
 
   Future<void> _salvarEIniciarColeta() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_areaCalculada <= 0) {
+    
+    final parcelaParaSalvar = _construirObjetoParcelaParaSalvar();
+
+    if (parcelaParaSalvar.areaMetrosQuadrados <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A área da parcela deve ser maior que zero'), backgroundColor: Colors.orange));
       return;
     }
@@ -197,7 +215,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     }
 
     try {
-      final parcelaAtualizada = _construirObjetoParcela().copyWith(status: StatusParcela.emAndamento);
+      final parcelaAtualizada = parcelaParaSalvar.copyWith(status: StatusParcela.emAndamento);
       final parcelaSalva = await dbHelper.saveFullColeta(parcelaAtualizada, []);
 
       if (mounted) {
@@ -232,7 +250,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     setState(() => _salvando = true);
 
     try {
-      final parcelaFinalizada = _construirObjetoParcela().copyWith(status: StatusParcela.concluida);
+      final parcelaFinalizada = _construirObjetoParcelaParaSalvar().copyWith(status: StatusParcela.concluida);
       await dbHelper.saveFullColeta(parcelaFinalizada, []);
 
       if (mounted) {
@@ -250,7 +268,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _salvando = true);
     try {
-      final parcelaEditada = _construirObjetoParcela();
+      final parcelaEditada = _construirObjetoParcelaParaSalvar();
       await dbHelper.saveFullColeta(parcelaEditada, _parcelaAtual.arvores);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alterações salvas com sucesso!'), backgroundColor: Colors.green));
@@ -276,12 +294,17 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
       if(parcelaRecarregada != null) {
         setState(() {
           _parcelaAtual = parcelaRecarregada;
+          if (_parcelaAtual.status == StatusParcela.concluida) {
+            _isReadOnly = true;
+          }
+          _preencherControllersComDadosAtuais();
         });
       }
     }
   }
 
   Future<void> _obterLocalizacaoAtual() async {
+    if (_isReadOnly) return;
     setState(() { _buscandoLocalizacao = true; _erroLocalizacao = null; });
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -300,12 +323,22 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
       if (mounted) setState(() => _buscandoLocalizacao = false);
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
+    double area = 0.0;
+    if (_formaDaParcela == FormaParcela.retangular) {
+      final largura = double.tryParse(_larguraController.text.replaceAll(',', '.')) ?? 0;
+      final comprimento = double.tryParse(_comprimentoController.text.replaceAll(',', '.')) ?? 0;
+      area = largura * comprimento;
+    } else {
+      final raio = double.tryParse(_raioController.text.replaceAll(',', '.')) ?? 0;
+      area = math.pi * math.pow(raio, 2);
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isModoEdicao ? 'Editar Dados da Parcela' : 'Nova Parcela'),
+        title: Text(_isModoEdicao ? 'Dados da Parcela' : 'Nova Parcela'),
         backgroundColor: const Color(0xFF617359),
         foregroundColor: Colors.white,
       ),
@@ -316,29 +349,41 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(controller: _nomeFazendaController, enabled: !_isVinculadoATalhao, decoration: const InputDecoration(labelText: 'Nome da Fazenda', border: OutlineInputBorder(), prefixIcon: Icon(Icons.business)), ),
+              if (_isReadOnly)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(8)
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 18, color: Colors.amber.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text("Parcela concluída (modo de visualização).", style: TextStyle(color: Colors.amber.shade900))),
+                    ],
+                  ),
+                ),
+              TextFormField(controller: _nomeFazendaController, enabled: !_isVinculadoATalhao && !_isReadOnly, decoration: const InputDecoration(labelText: 'Nome da Fazenda', border: OutlineInputBorder(), prefixIcon: Icon(Icons.business)), ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _idFazendaController,
-                enabled: !_isVinculadoATalhao,
+                enabled: !_isVinculadoATalhao && !_isReadOnly,
                 decoration: const InputDecoration(labelText: 'Código da Fazenda', border: OutlineInputBorder(), prefixIcon: Icon(Icons.pin_outlined)),
               ),
               const SizedBox(height: 16),
-              TextFormField(controller: _talhaoParcelaController, enabled: !_isVinculadoATalhao, decoration: const InputDecoration(labelText: 'Talhão', border: OutlineInputBorder(), prefixIcon: Icon(Icons.grid_on)), ),
+              TextFormField(controller: _talhaoParcelaController, enabled: !_isVinculadoATalhao && !_isReadOnly, decoration: const InputDecoration(labelText: 'Talhão', border: OutlineInputBorder(), prefixIcon: Icon(Icons.grid_on)), ),
               const SizedBox(height: 16),
-              TextFormField(controller: _idParcelaController, decoration: const InputDecoration(labelText: 'ID da parcela', border: OutlineInputBorder(), prefixIcon: Icon(Icons.tag)), validator: (v) => v == null || v.trim().isEmpty ? 'Campo obrigatório' : null),
+              TextFormField(controller: _idParcelaController, enabled: !_isReadOnly, decoration: const InputDecoration(labelText: 'ID da parcela', border: OutlineInputBorder(), prefixIcon: Icon(Icons.tag)), validator: (v) => v == null || v.trim().isEmpty ? 'Campo obrigatório' : null),
               const SizedBox(height: 16),
-              _buildCalculadoraArea(),
+              _buildCalculadoraArea(area),
               const SizedBox(height: 16),
               _buildColetorCoordenadas(),
               const SizedBox(height: 24),
-              
-              // <<< BOTÃO DE INFORMAÇÕES ADICIONAIS REMOVIDO >>>
-              
-              _buildPhotoSection(), // <<< NOVA SEÇÃO DE FOTOS
-
+              _buildPhotoSection(),
               const SizedBox(height: 16),
-              TextFormField(controller: _observacaoController, decoration: const InputDecoration(labelText: 'Observações da Parcela', border: OutlineInputBorder(), prefixIcon: Icon(Icons.comment), helperText: 'Opcional'), maxLines: 3),
+              TextFormField(controller: _observacaoController, enabled: !_isReadOnly, decoration: const InputDecoration(labelText: 'Observações da Parcela', border: OutlineInputBorder(), prefixIcon: Icon(Icons.comment), helperText: 'Opcional'), maxLines: 3),
               const SizedBox(height: 24),
               _buildActionButtons(),
             ],
@@ -349,6 +394,32 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
   }
 
   Widget _buildActionButtons() {
+    if (_isReadOnly) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: _salvando ? null : _reabrirParaEdicao,
+              icon: _salvando ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white)) : const Icon(Icons.edit_outlined),
+              label: const Text('Reabrir para Edição', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 50,
+            child: OutlinedButton.icon(
+              onPressed: _navegarParaInventario,
+              icon: const Icon(Icons.park_outlined),
+              label: const Text('Ver Inventário', style: TextStyle(fontSize: 18)),
+            ),
+          )
+        ],
+      );
+    }
+    
     if (_isModoEdicao) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -373,7 +444,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
           ),
         ],
       );
-    } else {
+    } else { // Nova parcela
       return Row(
         children: [
           Expanded(child: SizedBox(height: 50, child: OutlinedButton(onPressed: _salvando ? null : _finalizarParcelaVazia, style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF1D4433)), foregroundColor: const Color(0xFF1D4433)), child: const Text('Finalizar Vazia')))),
@@ -384,7 +455,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
     }
   }
 
-  Widget _buildCalculadoraArea() {
+  Widget _buildCalculadoraArea(double area) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -396,22 +467,22 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
             ButtonSegment(value: FormaParcela.circular, label: Text('Circular'), icon: Icon(Icons.circle_outlined)),
           ],
           selected: {_formaDaParcela},
-          onSelectionChanged: (newSelection) => setState(() { _formaDaParcela = newSelection.first; _calcularArea(); }),
+          onSelectionChanged: _isReadOnly ? null : (newSelection) => setState(() { _formaDaParcela = newSelection.first; }),
         ),
         const SizedBox(height: 16),
         if (_formaDaParcela == FormaParcela.retangular)
           Row(children: [
-            Expanded(child: TextFormField(controller: _larguraController, decoration: const InputDecoration(labelText: 'Largura (m)', border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null)),
+            Expanded(child: TextFormField(controller: _larguraController, enabled: !_isReadOnly, decoration: const InputDecoration(labelText: 'Largura (m)', border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null)),
             const SizedBox(width: 8), const Text('x', style: TextStyle(fontSize: 20)), const SizedBox(width: 8),
-            Expanded(child: TextFormField(controller: _comprimentoController, decoration: const InputDecoration(labelText: 'Comprimento (m)', border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null)),
+            Expanded(child: TextFormField(controller: _comprimentoController, enabled: !_isReadOnly, decoration: const InputDecoration(labelText: 'Comprimento (m)', border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null)),
           ])
         else
-          TextFormField(controller: _raioController, decoration: const InputDecoration(labelText: 'Raio (m)', border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null),
+          TextFormField(controller: _raioController, enabled: !_isReadOnly, decoration: const InputDecoration(labelText: 'Raio (m)', border: OutlineInputBorder()), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null),
         const SizedBox(height: 16),
         Container(
           width: double.infinity, padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: _areaCalculada > 0 ? Colors.green[50] : Colors.grey[200], borderRadius: BorderRadius.circular(4), border: Border.all(color: _areaCalculada > 0 ? Colors.green : Colors.grey)),
-          child: Column(children: [ const Text('Área Calculada:'), Text('${_areaCalculada.toStringAsFixed(2)} m²', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _areaCalculada > 0 ? Colors.green[800] : Colors.black)) ]),
+          decoration: BoxDecoration(color: area > 0 ? Colors.green[50] : Colors.grey[200], borderRadius: BorderRadius.circular(4), border: Border.all(color: area > 0 ? Colors.green : Colors.grey)),
+          child: Column(children: [ const Text('Área Calculada:'), Text('${area.toStringAsFixed(2)} m²', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: area > 0 ? Colors.green[800] : Colors.black)) ]),
         ),
       ],
     );
@@ -435,14 +506,13 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
                     Text('Lon: ${_posicaoAtual!.longitude.toStringAsFixed(6)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                     Text('Precisão: ±${_posicaoAtual!.accuracy.toStringAsFixed(1)}m', style: TextStyle(color: Colors.grey[700])),
                   ])),
-            IconButton(icon: const Icon(Icons.my_location, color: Color(0xFF1D4433)), onPressed: _buscandoLocalizacao ? null : _obterLocalizacaoAtual, tooltip: 'Obter localização'),
+            IconButton(icon: const Icon(Icons.my_location, color: Color(0xFF1D4433)), onPressed: _buscandoLocalizacao || _isReadOnly ? null : _obterLocalizacaoAtual, tooltip: 'Obter localização'),
           ]),
         ),
       ],
     );
   }
   
-  // <<< NOVO WIDGET PARA A SEÇÃO DE FOTOS >>>
   Widget _buildPhotoSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -457,7 +527,7 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
           ),
           child: Column(
             children: [
-              _imagePaths.isEmpty
+              _parcelaAtual.photoPaths.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 24.0),
@@ -472,61 +542,63 @@ class _ColetaDadosPageState extends State<ColetaDadosPage> {
                         crossAxisSpacing: 8,
                         mainAxisSpacing: 8,
                       ),
-                      itemCount: _imagePaths.length,
+                      itemCount: _parcelaAtual.photoPaths.length,
                       itemBuilder: (context, index) {
                         return Stack(
                           fit: StackFit.expand,
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.file(File(_imagePaths[index]), fit: BoxFit.cover),
+                              child: Image.file(File(_parcelaAtual.photoPaths[index]), fit: BoxFit.cover),
                             ),
-                            Positioned(
-                              top: -8,
-                              right: -8,
-                              child: IconButton(
-                                icon: const CircleAvatar(
-                                  backgroundColor: Colors.white,
-                                  radius: 12,
-                                  child: Icon(Icons.close, color: Colors.red, size: 16),
+                            if (!_isReadOnly)
+                              Positioned(
+                                top: -8,
+                                right: -8,
+                                child: IconButton(
+                                  icon: const CircleAvatar(
+                                    backgroundColor: Colors.white,
+                                    radius: 12,
+                                    child: Icon(Icons.close, color: Colors.red, size: 16),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _parcelaAtual.photoPaths.removeAt(index);
+                                    });
+                                  },
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    _imagePaths.removeAt(index);
-                                  });
-                                },
                               ),
-                            ),
                           ],
                         );
                       },
                     ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt_outlined),
-                      label: const Text('Câmera'),
+              if (!_isReadOnly) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.camera),
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Câmera'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('Galeria'),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickImage(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('Galeria'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ]
             ],
           ),
         ),
       ],
     );
   }
-
 }
