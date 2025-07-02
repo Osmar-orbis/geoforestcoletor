@@ -1,4 +1,4 @@
-// lib/main.dart (VERSÃO CORRIGIDA PARA SEMPRE PEDIR A EQUIPE APÓS LOGIN)
+// lib/main.dart (VERSÃO CORRETA E FINAL)
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -72,11 +72,6 @@ class MyApp extends StatelessWidget {
                   );
                 }
                 
-                // ===============================================================
-                // <<< CORREÇÃO DE LÓGICA APLICADA AQUI >>>
-                // Agora, se o usuário está logado, ele SEMPRE vai para a EquipePage.
-                // A HomePage só é acessada através da navegação a partir da EquipePage.
-                // ================================================================
                 if (loginController.isLoggedIn) {
                   return const EquipePage();
                 } else {
@@ -85,11 +80,15 @@ class MyApp extends StatelessWidget {
               },
             );
           },
-          // As outras rotas permanecem as mesmas
           '/equipe': (context) => const EquipePage(),
           '/home': (context) => const HomePage(title: 'Geo Forest Analytics'),
           '/lista_projetos': (context) => const ListaProjetosPage(title: 'Meus Projetos'),
         },
+        // ===============================================================
+        // <<< CORREÇÃO APLICADA AQUI >>>
+        // Esta linha instala o "observador de rotas" (a central de interfones)
+        // para que a página do mapa seja notificada quando você voltar para ela.
+        // ================================================================
         navigatorObservers: [MapProvider.routeObserver],
         
         builder: (context, child) {

@@ -1,7 +1,7 @@
-// lib/pages/fazenda/detalhes_fazenda_page.dart
+// lib/pages/fazenda/detalhes_fazenda_page.dart (COLE O ARQUIVO COMPLETO)
 
 import 'package:flutter/material.dart';
-import 'package:flutter_slidable/flutter_slidable.dart'; // <<< 1. IMPORTAR SLIDABLE
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/fazenda_model.dart';
@@ -21,7 +21,13 @@ class DetalhesFazendaPage extends StatefulWidget {
 }
 
 class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
-  late Future<List<Talhao>> _talhoesFuture;
+  // =========================================================================
+  // <<< ALTERAÇÃO 4.1: MUDANÇA NA GESTÃO DO ESTADO >>>
+  // Trocamos o FutureBuilder por uma lista e um booleano de loading.
+  // Isso nos dá mais controle e evita recarregamentos desnecessários.
+  // =========================================================================
+  List<Talhao> _talhoes = [];
+  bool _isLoading = true;
   final dbHelper = DatabaseHelper.instance;
 
   bool _isSelectionMode = false;
@@ -33,12 +39,36 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
     _carregarTalhoes();
   }
 
-  void _carregarTalhoes() {
+  // =========================================================================
+  // <<< ALTERAÇÃO 4.2: LÓGICA DE FILTRO IMPLEMENTADA AQUI >>>
+  // =========================================================================
+  void _carregarTalhoes() async {
     if(mounted) {
       setState(() {
+        _isLoading = true; // Inicia o loading
         _isSelectionMode = false;
         _selectedTalhoes.clear();
-        _talhoesFuture = dbHelper.getTalhoesDaFazenda(widget.fazenda.id, widget.fazenda.atividadeId);
+      });
+    }
+
+    // 1. Busca todos os talhões da fazenda
+    final todosOsTalhoes = await dbHelper.getTalhoesDaFazenda(widget.fazenda.id, widget.fazenda.atividadeId);
+    final List<Talhao> talhoesComColeta = [];
+
+    // 2. Itera sobre cada talhão para verificar se ele tem parcelas
+    for (final talhao in todosOsTalhoes) {
+      final parcelas = await dbHelper.getParcelasDoTalhao(talhao.id!);
+      // 3. Se a lista de parcelas não estiver vazia, adiciona o talhão à lista final
+      if (parcelas.isNotEmpty) {
+        talhoesComColeta.add(talhao);
+      }
+    }
+
+    // 4. Atualiza o estado da tela com a lista já filtrada
+    if(mounted) {
+      setState(() {
+        _talhoes = talhoesComColeta;
+        _isLoading = false; // Finaliza o loading
       });
     }
   }
@@ -107,7 +137,6 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
     }
   }
   
-  // <<< 2. NOVA FUNÇÃO PARA NAVEGAR PARA EDIÇÃO >>>
   void _navegarParaEdicaoTalhao(Talhao talhao) async {
     final bool? talhaoEditado = await Navigator.push<bool>(
       context,
@@ -115,7 +144,7 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
         builder: (context) => FormTalhaoPage(
           fazendaId: talhao.fazendaId,
           fazendaAtividadeId: talhao.fazendaAtividadeId,
-          talhaoParaEditar: talhao, // Passa o talhão para o formulário
+          talhaoParaEditar: talhao,
         ),
       ),
     );
@@ -202,97 +231,84 @@ class _DetalhesFazendaPageState extends State<DetalhesFazendaPage> {
             ),
           ),
 
+          // =========================================================================
+          // <<< ALTERAÇÃO 4.3: SUBSTITUINDO O FUTUREBUILDER PELA LISTA DIRETA >>>
+          // =========================================================================
           Expanded(
-            child: FutureBuilder<List<Talhao>>(
-              future: _talhoesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Erro ao carregar talhões: ${snapshot.error}'));
-                }
-
-                final talhoes = snapshot.data ?? [];
-
-                if (talhoes.isEmpty) {
-                  return const Center(
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : _talhoes.isEmpty
+                ? const Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: EdgeInsets.all(16.0),
                       child: Text(
-                        'Nenhum talhão encontrado.\nClique no botão "+" para adicionar o primeiro.',
+                        'Nenhum talhão com coletas encontrado.\nClique no botão "+" para adicionar um novo talhão e iniciar uma coleta.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                     ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 80),
-                  itemCount: talhoes.length,
-                  itemBuilder: (context, index) {
-                    final talhao = talhoes[index];
-                    final isSelected = _selectedTalhoes.contains(talhao.id!);
-                    // <<< 3. ENVOLVER O CARD COM O SLIDABLE >>>
-                    return Slidable(
-                      key: ValueKey(talhao.id),
-                      startActionPane: ActionPane(
-                        motion: const DrawerMotion(),
-                        children: [
-                          SlidableAction(
-                            onPressed: (context) => _navegarParaEdicaoTalhao(talhao),
-                            backgroundColor: Colors.blue.shade700,
-                            foregroundColor: Colors.white,
-                            icon: Icons.edit_outlined,
-                            label: 'Editar',
-                          ),
-                        ],
-                      ),
-                      endActionPane: ActionPane(
-                        motion: const BehindMotion(),
-                        children: [
-                          SlidableAction(
-                            onPressed: (context) => _deleteTalhao(talhao),
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            icon: Icons.delete_outline,
-                            label: 'Excluir',
-                          ),
-                        ],
-                      ),
-                      child: Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withAlpha(128) : null,
-                        child: ListTile(
-                          onTap: () {
-                            if (_isSelectionMode) {
-                              _onItemSelected(talhao.id!);
-                            } else {
-                              _navegarParaDetalhesTalhao(talhao);
-                            }
-                          },
-                          onLongPress: () {
-                            if (!_isSelectionMode) {
-                              _toggleSelectionMode(talhao.id!);
-                            }
-                          },
-                          leading: CircleAvatar(
-                            backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : null,
-                            child: Icon(isSelected ? Icons.check : Icons.park_outlined),
-                          ),
-                          title: Text(talhao.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('Área: ${talhao.areaHa?.toStringAsFixed(2) ?? 'N/A'} ha - Espécie: ${talhao.especie ?? 'N/A'}'),
-                          // <<< 4. REMOVER O ÍCONE DE LIXEIRA DO TRAILING >>>
-                          trailing: const Icon(Icons.swap_horiz_outlined, color: Colors.grey),
-                          selected: isSelected,
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 80),
+                    itemCount: _talhoes.length,
+                    itemBuilder: (context, index) {
+                      final talhao = _talhoes[index];
+                      final isSelected = _selectedTalhoes.contains(talhao.id!);
+                      return Slidable(
+                        key: ValueKey(talhao.id),
+                        startActionPane: ActionPane(
+                          motion: const DrawerMotion(),
+                          children: [
+                            SlidableAction(
+                              onPressed: (context) => _navegarParaEdicaoTalhao(talhao),
+                              backgroundColor: Colors.blue.shade700,
+                              foregroundColor: Colors.white,
+                              icon: Icons.edit_outlined,
+                              label: 'Editar',
+                            ),
+                          ],
                         ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                        endActionPane: ActionPane(
+                          motion: const BehindMotion(),
+                          children: [
+                            SlidableAction(
+                              onPressed: (context) => _deleteTalhao(talhao),
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              icon: Icons.delete_outline,
+                              label: 'Excluir',
+                            ),
+                          ],
+                        ),
+                        child: Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withAlpha(128) : null,
+                          child: ListTile(
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _onItemSelected(talhao.id!);
+                              } else {
+                                _navegarParaDetalhesTalhao(talhao);
+                              }
+                            },
+                            onLongPress: () {
+                              if (!_isSelectionMode) {
+                                _toggleSelectionMode(talhao.id!);
+                              }
+                            },
+                            leading: CircleAvatar(
+                              backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : null,
+                              child: Icon(isSelected ? Icons.check : Icons.park_outlined),
+                            ),
+                            title: Text(talhao.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('Área: ${talhao.areaHa?.toStringAsFixed(2) ?? 'N/A'} ha - Espécie: ${talhao.especie ?? 'N/A'}'),
+                            trailing: const Icon(Icons.swap_horiz_outlined, color: Colors.grey),
+                            selected: isSelected,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

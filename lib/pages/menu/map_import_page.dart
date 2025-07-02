@@ -1,4 +1,4 @@
-// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA E CORRIGIDA)
+// lib/pages/menu/map_import_page.dart (COLE O ARQUIVO COMPLETO)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,15 +20,21 @@ class MapImportPage extends StatefulWidget {
   State<MapImportPage> createState() => _MapImportPageState();
 }
 
+// =========================================================================
+// <<< ALTERAÇÃO 3.1: ADICIONANDO 'with RouteAware' >>>
+// =========================================================================
 class _MapImportPageState extends State<MapImportPage> with RouteAware {
   final _mapController = MapController();
   bool _isInitialLoad = true;
 
+  // =========================================================================
+  // <<< ALTERAÇÃO 3.2: IMPLEMENTANDO O CICLO DE VIDA DO ROUTEAWARE >>>
+  // =========================================================================
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // Acessa o observer estático diretamente, sem usar context.read()
+    // Inscreve esta tela no observador de rotas
     MapProvider.routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
     
     // Limpa os dados na primeira vez que a tela é construída
@@ -40,6 +46,7 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
     }
   }
   
+  // Este método é chamado quando voltamos para esta tela
   @override
   void didPopNext() {
     super.didPopNext();
@@ -49,10 +56,11 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
 
   @override
   void dispose() {
-    // Acessa o observer estático diretamente para remover a inscrição
+    // Remove a inscrição para evitar memory leaks
     MapProvider.routeObserver.unsubscribe(this);
     super.dispose();
   }
+  // =========================================================================
 
   Color _getMarkerColor(SampleStatus status) {
     switch (status) {
@@ -266,8 +274,6 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
                           context,
                           MaterialPageRoute(builder: (context) => ColetaDadosPage(parcelaParaEditar: parcela))
                         );
-                        
-                        // A lógica de recarregamento agora está no didPopNext()
                       },
                       child: Container(
                         decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 4, offset: const Offset(2, 2))]),

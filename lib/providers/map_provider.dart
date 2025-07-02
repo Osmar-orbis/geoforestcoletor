@@ -1,4 +1,4 @@
-// lib/providers/map_provider.dart (VERSÃO FINAL - CORREÇÃO DE ENUM)
+// lib/providers/map_provider.dart (COLE O ARQUIVO COMPLETO)
 
 import 'dart:async';
 import 'package:collection/collection.dart';
@@ -24,14 +24,17 @@ class MapProvider with ChangeNotifier {
   final _dbHelper = DatabaseHelper.instance;
   final _samplingService = SamplingService();
   
-  // Adicionando o RouteObserver
+  // =======================================================================
+  // <<< ALTERAÇÃO 1: ADICIONANDO O ROUTEOBSERVER ESTÁTICO >>>
+  // Isso permitirá que qualquer tela se inscreva para eventos de navegação.
+  // =======================================================================
   static final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
   List<ImportedFeature> _importedFeatures = [];
   List<SamplePoint> _samplePoints = [];
   bool _isLoading = false;
   Atividade? _currentAtividade;
-  Talhao? _currentTalhao; // Adicionando para o contexto do mapa
+  Talhao? _currentTalhao; 
   MapLayerType _currentLayer = MapLayerType.satelite;
   Position? _currentUserPosition;
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -46,7 +49,7 @@ class MapProvider with ChangeNotifier {
   List<SamplePoint> get samplePoints => _samplePoints;
   bool get isLoading => _isLoading;
   Atividade? get currentAtividade => _currentAtividade;
-  Talhao? get currentTalhao => _currentTalhao; // Getter para o talhão atual
+  Talhao? get currentTalhao => _currentTalhao;
   MapLayerType get currentLayer => _currentLayer;
   Position? get currentUserPosition => _currentUserPosition;
   bool get isFollowingUser => _isFollowingUser;
@@ -120,13 +123,12 @@ class MapProvider with ChangeNotifier {
     _importedFeatures = [];
     _samplePoints = [];
     _currentAtividade = null;
-    _currentTalhao = null; // Limpa o talhão também
+    _currentTalhao = null;
     if (_isFollowingUser) toggleFollowingUser();
     if (_isDrawing) cancelDrawing();
     notifyListeners();
   }
 
-  // Novo método para definir o talhão atual
   void setCurrentTalhao(Talhao talhao) {
     _currentTalhao = talhao;
   }
@@ -269,7 +271,7 @@ class MapProvider with ChangeNotifier {
            _samplePoints.add(SamplePoint(
               id: int.tryParse(p.idParcela) ?? 0,
               position: LatLng(p.latitude ?? 0, p.longitude ?? 0),
-              status: _getSampleStatus(p), // <<< CORREÇÃO APLICADA AQUI
+              status: _getSampleStatus(p),
               data: {'dbId': p.dbId}
           ));
         }
@@ -278,7 +280,6 @@ class MapProvider with ChangeNotifier {
     _setLoading(false);
   }
 
-  // Função auxiliar para traduzir o status
   SampleStatus _getSampleStatus(Parcela parcela) {
     if (parcela.exportada) {
       return SampleStatus.exported;
