@@ -1,4 +1,4 @@
-// lib/providers/map_provider.dart (VERSÃO COMPLETA E CORRIGIDA)
+// lib/providers/map_provider.dart (VERSÃO FINAL COM OTIMIZAÇÃO AUTOMÁTICA)
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -10,6 +10,7 @@ import 'package:geoforestcoletor/models/fazenda_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/sample_point.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
+import 'package:geoforestcoletor/services/activity_optimizer_service.dart'; // <<< IMPORT DO NOVO SERVIÇO
 import 'package:geoforestcoletor/services/geojson_service.dart';
 import 'package:geoforestcoletor/services/sampling_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -22,6 +23,8 @@ class MapProvider with ChangeNotifier {
   final _geoJsonService = GeoJsonService();
   final _dbHelper = DatabaseHelper.instance;
   final _samplingService = SamplingService();
+  // <<< INSTÂNCIA DO NOVO SERVIÇO >>>
+  late final ActivityOptimizerService _optimizerService;
   
   static final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
@@ -35,6 +38,11 @@ class MapProvider with ChangeNotifier {
   bool _isFollowingUser = false;
   bool _isDrawing = false;
   final List<LatLng> _drawnPoints = [];
+
+  // <<< CONSTRUTOR PARA INICIALIZAR O SERVIÇO >>>
+  MapProvider() {
+    _optimizerService = ActivityOptimizerService(dbHelper: _dbHelper);
+  }
 
   // Getters
   bool get isDrawing => _isDrawing;
@@ -234,8 +242,17 @@ class MapProvider with ChangeNotifier {
       await loadSamplesParaAtividade();
     }
     
+    // <<< CHAMADA AUTOMÁTICA PARA O SERVIÇO DE OTIMIZAÇÃO >>>
+    final int talhoesRemovidos = await _optimizerService.otimizarAtividade(_currentAtividade!.id!);
+    
     _setLoading(false);
-    return "${parcelasParaSalvar.length} amostras foram geradas e salvas.";
+    
+    // <<< MENSAGEM DE RETORNO MELHORADA >>>
+    String mensagemFinal = "${parcelasParaSalvar.length} amostras foram geradas e salvas.";
+    if (talhoesRemovidos > 0) {
+      mensagemFinal += " $talhoesRemovidos talhões vazios foram otimizados.";
+    }
+    return mensagemFinal;
   }
   
   Future<void> loadSamplesParaAtividade() async {

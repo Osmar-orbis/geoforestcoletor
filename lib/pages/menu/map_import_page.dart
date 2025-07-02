@@ -1,4 +1,4 @@
-// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA E CORRIGIDA)
+// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA COM MARCADOR MELHORADO)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,7 +12,6 @@ import 'package:provider/provider.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 
 class MapImportPage extends StatefulWidget {
-  // O construtor agora é simples, sem parâmetros.
   const MapImportPage({super.key});
 
   @override
@@ -38,6 +37,11 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
   @override
   void dispose() {
     MapProvider.routeObserver.unsubscribe(this);
+    // Garante que o stream de GPS seja desligado ao sair da tela.
+    final mapProvider = Provider.of<MapProvider>(context, listen: false);
+    if (mapProvider.isFollowingUser) {
+      mapProvider.toggleFollowingUser();
+    }
     super.dispose();
   }
 
@@ -155,9 +159,9 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Buscando sua localização...')));
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      _mapController.move(LatLng(position.latitude, position.longitude), 17.0);
       provider.updateUserPosition(position);
       provider.toggleFollowingUser();
+      _mapController.move(LatLng(position.latitude, position.longitude), 17.0);
       HapticFeedback.mediumImpact();
     } catch (e) {
       if (mounted) {
@@ -284,6 +288,19 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
                     );
                   }).toList(),
                 ),
+
+              // <<< MARCADOR DE LOCALIZAÇÃO MELHORADO >>>
+              if (currentUserPosition != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      width: 80.0,
+                      height: 80.0,
+                      point: LatLng(currentUserPosition.latitude, currentUserPosition.longitude),
+                      child: const LocationMarker(), // Usa o widget customizado
+                    ),
+                  ],
+                ),
             ],
           ),
           if (mapProvider.isLoading)
@@ -331,6 +348,82 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
             ),
         ],
       ),
+    );
+  }
+}
+
+// =========================================================================
+// WIDGET CUSTOMIZADO PARA O MARCADOR DE LOCALIZAÇÃO
+// =========================================================================
+class LocationMarker extends StatefulWidget {
+  const LocationMarker({super.key});
+
+  @override
+  State<LocationMarker> createState() => _LocationMarkerState();
+}
+
+class _LocationMarkerState extends State<LocationMarker> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: false);
+
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Anel externo que pulsa
+        FadeTransition(
+          opacity: Tween<double>(begin: 1.0, end: 0.0).animate(_animation),
+          child: ScaleTransition(
+            scale: _animation,
+            child: Container(
+              width: 50.0,
+              height: 50.0,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.withOpacity(0.4),
+              ),
+            ),
+          ),
+        ),
+        // Ponto central fixo
+        Container(
+          width: 20.0,
+          height: 20.0,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.blue.shade700,
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 5,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
