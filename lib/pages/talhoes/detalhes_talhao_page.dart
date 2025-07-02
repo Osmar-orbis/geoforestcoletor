@@ -1,4 +1,4 @@
-// lib/pages/talhoes/detalhes_talhao_page.dart (VERSÃO COM NAVEGAÇÃO CORRIGIDA)
+// lib/pages/talhoes/detalhes_talhao_page.dart (VERSÃO COM NAVEGAÇÃO BLINDADA)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
@@ -16,7 +16,8 @@ class DetalhesTalhaoPage extends StatefulWidget {
   final Talhao talhao;
   final Atividade atividade;
 
-  const DetalhesTalhaoPage({super.key, required this.talhao, required this.atividade});
+  const DetalhesTalhaoPage(
+      {super.key, required this.talhao, required this.atividade});
 
   @override
   State<DetalhesTalhaoPage> createState() => _DetalhesTalhaoPageState();
@@ -31,7 +32,9 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
 
   bool get _isAtividadeDeInventario {
     final tipo = widget.atividade.tipo.toLowerCase();
-    return tipo.contains("ipc") || tipo.contains("ifc") || tipo.contains("inventário");
+    return tipo.contains("ipc") ||
+        tipo.contains("ifc") ||
+        tipo.contains("inventário");
   }
 
   @override
@@ -54,58 +57,32 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
     }
   }
 
-  void _toggleSelectionMode(int? itemId) {
-    setState(() {
-      _isSelectionMode = !_isSelectionMode;
-      _selectedItens.clear();
-      if (_isSelectionMode && itemId != null) {
-        _selectedItens.add(itemId);
-      }
-    });
-  }
-
-  void _onItemSelected(int itemId) {
-    setState(() {
-      if (_selectedItens.contains(itemId)) {
-        _selectedItens.remove(itemId);
-        if (_selectedItens.isEmpty) _isSelectionMode = false;
-      } else {
-        _selectedItens.add(itemId);
-      }
-    });
-  }
-
-  Future<void> _deleteSelectedItems() async {
-    if (_selectedItens.isEmpty || !mounted) return;
-
-    final itemType = _isAtividadeDeInventario ? 'parcelas' : 'cubagens';
-    final bool? confirmar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar Exclusão'),
-        content: Text('Tem certeza que deseja apagar os ${_selectedItens.length} $itemType selecionados?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), style: FilledButton.styleFrom(backgroundColor: Colors.red), child: const Text('Apagar')),
-        ],
-      ),
+  // =========================================================================
+  // <<< CORREÇÃO APLICADA AQUI >>>
+  // Garantimos que o objeto Talhão está completo antes de navegar.
+  // =========================================================================
+  Future<void> _navegarParaNovaParcela() async {
+    // Busca a versão mais atualizada e completa do talhão no banco
+    final talhoesDaFazenda = await dbHelper.getTalhoesDaFazenda(widget.talhao.fazendaId, widget.talhao.fazendaAtividadeId);
+    final talhaoCompleto = talhoesDaFazenda.firstWhere(
+      (t) => t.id == widget.talhao.id,
+      // Fallback, caso algo dê muito errado, usa o objeto atual
+      orElse: () => widget.talhao,
     );
 
-    if (confirmar == true) {
-      if (_isAtividadeDeInventario) {
-        await dbHelper.deletarMultiplasParcelas(_selectedItens.toList());
-      } else {
-        await dbHelper.deletarMultiplasCubagens(_selectedItens.toList());
-      }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${_selectedItens.length} $itemType apagados.'), backgroundColor: Colors.green));
+    // Navega para a página de coleta passando o objeto completo
+    final bool? recarregar = await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (context) => ColetaDadosPage(talhao: talhaoCompleto)),
+    );
+
+    // Se a tela de coleta retornar 'true', recarrega a lista de parcelas
+    if (recarregar == true && mounted) {
       _carregarDados();
     }
   }
-
-  Future<void> _navegarParaNovaParcela() async {
-    final bool? recarregar = await Navigator.push(context, MaterialPageRoute(builder: (context) => ColetaDadosPage(talhao: widget.talhao)));
-    if (recarregar == true && mounted) _carregarDados();
-  }
+  // =========================================================================
 
   Future<void> _navegarParaNovaCubagem() async {
     final String? metodoEscolhido = await showDialog<String>(
@@ -118,12 +95,14 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
             children: [
               ListTile(
                 title: const Text('Seções Fixas'),
-                subtitle: const Text('Medições em alturas pré-definidas (0.1m, 0.3m, 0.7m, 1.0m...).'),
+                subtitle: const Text(
+                    'Medições em alturas pré-definidas (0.1m, 0.3m, 0.7m, 1.0m...).'),
                 onTap: () => Navigator.of(context).pop('Fixas'),
               ),
               ListTile(
                 title: const Text('Seções Relativas'),
-                subtitle: const Text('Medições em porcentagens da altura total.'),
+                subtitle: const Text(
+                    'Medições em porcentagens da altura total.'),
                 onTap: () => Navigator.of(context).pop('Relativas'),
               ),
             ],
@@ -161,8 +140,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       _carregarDados();
     }
   }
-
-  // <<< CORREÇÃO APLICADA AQUI >>>
+  
   Future<void> _navegarParaDetalhesParcela(Parcela parcela) async {
     final recarregar = await Navigator.push(
       context,
@@ -170,31 +148,78 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
         builder: (context) => ColetaDadosPage(parcelaParaEditar: parcela),
       ),
     );
-    // Se a tela de edição retornar `true`, recarrega a lista
     if (recarregar == true && mounted) {
       _carregarDados();
     }
   }
-
-  // <<< CORREÇÃO APLICADA AQUI >>>
+  
   Future<void> _navegarParaDetalhesCubagem(CubagemArvore arvore) async {
     final recarregar = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CubagemDadosPage(
-          metodo: arvore.tipoMedidaCAP, // O método é definido pela árvore existente
+          metodo: arvore.tipoMedidaCAP,
           arvoreParaEditar: arvore,
         ),
       ),
     );
-    // Se a tela de edição retornar um resultado, recarrega a lista
     if (recarregar != null && recarregar is bool && recarregar && mounted) {
       _carregarDados();
     }
   }
 
+  // --- O resto do arquivo (build, delete, etc.) permanece exatamente o mesmo ---
+  // ... (cole o restante do seu arquivo original aqui, sem nenhuma alteração)
+  
+  void _toggleSelectionMode(int? itemId) {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+      _selectedItens.clear();
+      if (_isSelectionMode && itemId != null) {
+        _selectedItens.add(itemId);
+      }
+    });
+  }
+
+  void _onItemSelected(int itemId) {
+    setState(() {
+      if (_selectedItens.contains(itemId)) {
+        _selectedItens.remove(itemId);
+        if (_selectedItens.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedItens.add(itemId);
+      }
+    });
+  }
+  
+  Future<void> _deleteSelectedItems() async {
+    if (_selectedItens.isEmpty || !mounted) return;
+
+    final itemType = _isAtividadeDeInventario ? 'parcelas' : 'cubagens';
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Exclusão'),
+        content: Text('Tem certeza que deseja apagar os ${_selectedItens.length} $itemType selecionados?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), style: FilledButton.styleFrom(backgroundColor: Colors.red), child: const Text('Apagar')),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      if (_isAtividadeDeInventario) {
+        await dbHelper.deletarMultiplasParcelas(_selectedItens.toList());
+      } else {
+        await dbHelper.deletarMultiplasCubagens(_selectedItens.toList());
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${_selectedItens.length} $itemType apagados.'), backgroundColor: Colors.green));
+      _carregarDados();
+    }
+  }
+
   AppBar _buildAppBar() {
-    //... (código sem alterações)
     return AppBar(
       title: Text('Talhão: ${widget.talhao.nome}'),
       actions: [
@@ -218,7 +243,6 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
 
   @override
   Widget build(BuildContext context) {
-    //... (código sem alterações)
     return Scaffold(
       appBar: _isSelectionMode
           ? AppBar(
@@ -300,7 +324,6 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   }
 
   Widget _buildListaDeParcelas(List<Parcela> parcelas) {
-    //... (código sem alterações)
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 80),
       itemCount: parcelas.length,
@@ -338,7 +361,6 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   }
 
   Widget _buildListaDeCubagens(List<CubagemArvore> cubagens) {
-    //... (código sem alterações)
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 80),
       itemCount: cubagens.length,
