@@ -5,7 +5,6 @@ import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
-import 'package:geoforestcoletor/pages/menu/map_import_page.dart';
 import 'package:geoforestcoletor/pages/menu/home_page.dart';
 import 'package:geoforestcoletor/pages/dashboard/talhao_dashboard_page.dart';
 import 'package:geoforestcoletor/pages/amostra/coleta_dados_page.dart';
@@ -101,9 +100,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
     }
   }
 
-  void _navegarParaMapa() {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => MapImportPage(talhao: widget.talhao)));
-  }
+  
 
   Future<void> _navegarParaNovaParcela() async {
     final bool? recarregar = await Navigator.push(context, MaterialPageRoute(builder: (context) => ColetaDadosPage(talhao: widget.talhao)));
@@ -233,15 +230,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: ElevatedButton.icon(
-              onPressed: _navegarParaMapa,
-              icon: const Icon(Icons.map_outlined),
-              label: const Text('Abrir Talhão no Mapa'),
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-            ),
-          ),
+          
           Padding(
             padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
             child: Text(

@@ -1,21 +1,28 @@
-// lib/services/sampling_service.dart
+// lib/services/sampling_service.dart (VERSÃO FINAL E CORRETA)
 
 import 'dart:math';
-// import 'package:flutter/foundation.dart'; // <<< 1. IMPORT REMOVIDO
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:geoforestcoletor/models/sample_point.dart'; // <<< IMPORT DO NOVO MODELO
+import 'package:geoforestcoletor/services/geojson_service.dart';
+
+// Classe auxiliar para transportar o ponto gerado e as propriedades do talhão.
+class GeneratedPoint {
+  final LatLng position;
+  final Map<String, dynamic> properties;
+
+  GeneratedPoint({required this.position, required this.properties});
+}
 
 class SamplingService {
   
-  // <<< O TIPO DE RETORNO MUDOU PARA List<SamplePoint> >>>
-  List<SamplePoint> generateGridSamplePoints({
-    required List<Polygon> polygons,
+  // Método principal refatorado para o novo fluxo de múltiplos talhões.
+  List<GeneratedPoint> generateMultiTalhaoSamplePoints({
+    required List<ImportedFeature> importedFeatures,
     required double hectaresPerSample,
   }) {
-    if (hectaresPerSample <= 0 || polygons.isEmpty) return [];
+    if (hectaresPerSample <= 0 || importedFeatures.isEmpty) return [];
 
-    final allPoints = polygons.expand((p) => p.points).toList();
+    final allPoints = importedFeatures.expand((f) => f.polygon.points).toList();
     if (allPoints.isEmpty) return [];
     
     final bounds = LatLngBounds.fromPoints(allPoints);
@@ -30,18 +37,18 @@ class SamplingService {
     final double latStep = spacingInMeters / 111132.0;
     final double lonStep = spacingInMeters / (111320.0 * cos(centerLatRad));
 
-    final List<SamplePoint> validSamplePoints = [];
-    int pointId = 1; // <<< Contador para o número da parcela
+    final List<GeneratedPoint> validSamplePoints = [];
 
     for (double lat = minLat; lat <= maxLat; lat += latStep) {
       for (double lon = minLon; lon <= maxLon; lon += lonStep) {
         final gridPoint = LatLng(lat, lon);
         
-        for (final polygon in polygons) {
-          if (_isPointInPolygon(gridPoint, polygon.points)) {
-            // <<< CRIA O OBJETO SamplePoint E ADICIONA NA LISTA >>>
-            validSamplePoints.add(SamplePoint(id: pointId, position: gridPoint));
-            pointId++; // Incrementa o contador
+        for (final feature in importedFeatures) {
+          if (_isPointInPolygon(gridPoint, feature.polygon.points)) {
+            validSamplePoints.add(GeneratedPoint(
+              position: gridPoint,
+              properties: feature.properties,
+            ));
             break; 
           }
         }
@@ -51,7 +58,11 @@ class SamplingService {
     return validSamplePoints;
   }
 
-  /// Verifica se um ponto está dentro de um polígono usando o algoritmo Ray-casting.
+  // =========================================================================
+  // <<< CORREÇÃO: MÉTODO ANTIGO E OBSOLETO REMOVIDO >>>
+  // O método 'generateGridSamplePoints' foi removido para eliminar o erro.
+  // =========================================================================
+
   bool _isPointInPolygon(LatLng point, List<LatLng> polygonVertices) {
     if (polygonVertices.isEmpty) return false;
     

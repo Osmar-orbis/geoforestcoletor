@@ -1,14 +1,20 @@
-<!-- android/app/src/main/AndroidManifest.xml -->
+<!-- android/app/src/main/AndroidManifest.xml (VERSÃO CORRIGIDA) -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Suas permissões existentes aqui... (não mude nada) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    
+    <!-- ======================================================= -->
+    <!-- ============== ADICIONE ESTA LINHA AQUI =============== -->
+    <!-- PERMISSÃO BÁSICA QUE FALTAVA -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <!-- ======================================================= -->
+    
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
@@ -36,9 +42,7 @@
             </intent-filter>
         </activity>
 
-        <!-- ======================================================= -->
-        <!-- ============== COLE O NOVO BLOCO DE CÓDIGO AQUI ========= -->
-        <!-- ======================================================= -->
+        <!-- O bloco do FileProvider está correto, mantenha-o como está -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
@@ -55,7 +59,6 @@
             android:value="2" />
     </application>
     
-    <!-- Sua tag <queries> existente aqui... (não mude nada) -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

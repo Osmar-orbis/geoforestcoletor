@@ -1,11 +1,12 @@
-// lib/pages/menu/configuracoes_page.dart (SUBSTITUA O ARQUIVO INTEIRO)
+// lib/pages/menu/configuracoes_page.dart (VERSÃO COM BOTÃO DE DIAGNÓSTICO)
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/services/licensing_service.dart'; // 1. IMPORTAR O SERVIÇO DE LICENÇA
+import 'package:geoforestcoletor/services/licensing_service.dart';
+import 'package:permission_handler/permission_handler.dart'; // <<< IMPORT NECESSÁRIO
 
 const Map<String, int> zonasUtmSirgas2000 = {
   'SIRGAS 2000 / UTM Zona 18S': 31978, 'SIRGAS 2000 / UTM Zona 19S': 31979,
@@ -25,19 +26,17 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
   String? _zonaSelecionada;
   final dbHelper = DatabaseHelper();
   
-  // 2. ADICIONAR AS VARIÁVEIS PARA GERENCIAMENTO DE LICENÇA
   final LicensingService _licensingService = LicensingService();
   Map<String, int>? _deviceUsage;
-  bool _isLoadingLicense = true; // Loading específico para a licença
+  bool _isLoadingLicense = true;
 
   @override
   void initState() {
     super.initState();
     _carregarConfiguracoes();
-    _fetchDeviceUsage(); // 3. CHAMAR A FUNÇÃO PARA BUSCAR OS DADOS DA LICENÇA
+    _fetchDeviceUsage();
   }
 
-  // --- Funções Originais ---
   Future<void> _carregarConfiguracoes() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
@@ -57,7 +56,6 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
     }
   }
   
-  // 4. ADICIONAR A LÓGICA PARA BUSCAR DADOS DA LICENÇA
   Future<void> _fetchDeviceUsage() async {
     final userEmail = FirebaseAuth.instance.currentUser?.email;
     if (userEmail != null) {
@@ -102,8 +100,23 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
       onConfirmar();
     }
   }
-  // --- Fim das Funções Originais ---
 
+  // =======================================================
+  // <<< NOVO MÉTODO PARA DIAGNÓSTICO ADICIONADO >>>
+  // =======================================================
+  Future<void> _diagnosticarPermissoes() async {
+    final statusStorage = await Permission.storage.status;
+    print("DEBUG: Status da permissão [storage]: $statusStorage");
+
+    final statusManage = await Permission.manageExternalStorage.status;
+    print("DEBUG: Status da permissão [manageExternalStorage]: $statusManage");
+    
+    final statusMedia = await Permission.accessMediaLocation.status;
+    print("DEBUG: Status da permissão [accessMediaLocation]: $statusMedia");
+
+    // Abre as configurações do app no Android para vermos manualmente
+    await openAppSettings(); 
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +129,6 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 5. NOVA SEÇÃO DE GERENCIAMENTO DE LICENÇA
                   const Text('Gerenciamento de Licença', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
                   const SizedBox(height: 8),
                   Card(
@@ -143,7 +155,6 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
 
                   const Divider(thickness: 1, height: 48),
 
-                  // --- SEÇÃO DE CONFIGURAÇÃO DE ZONA UTM ---
                   const Text('Zona UTM de Exportação', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const Text('Define o sistema de coordenadas para os arquivos CSV.', style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 20),
@@ -167,7 +178,6 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                   
                   const Divider(thickness: 1, height: 48),
 
-                  // --- SEÇÃO DE GERENCIAMENTO DE DADOS ---
                   const Text('Gerenciamento de Dados', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                   const SizedBox(height: 12),
                   ListTile(
@@ -186,7 +196,6 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
 
                   const Divider(thickness: 1, height: 24),
 
-                  // --- SEÇÃO DE AÇÕES PERIGOSAS ---
                   const Text('Ações Perigosas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
                   const SizedBox(height: 12),
                   ListTile(
@@ -215,6 +224,20 @@ class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
                       },
                     ),
                   ),
+
+                  const Divider(thickness: 1, height: 48),
+
+                  // =======================================================
+                  // <<< BOTÃO DE DEBUG ADICIONADO AQUI >>>
+                  // =======================================================
+                  Center(
+                    child: ElevatedButton(
+                      onPressed: _diagnosticarPermissoes,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                      child: const Text('Debug de Permissões', style: TextStyle(color: Colors.black)),
+                    ),
+                  ),
+
                 ],
               ),
             ),

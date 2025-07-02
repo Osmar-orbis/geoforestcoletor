@@ -29,7 +29,7 @@ android {
         minSdk = 23
         
         // VERSÃO CORRIGIDA: Definindo um valor fixo e mais recente.
-        targetSdk = 34
+        targetSdk = 33
         
         versionCode = 1 // Use flutter.versionCode se preferir
         versionName = "1.0.0" // Use flutter.versionName se preferir
