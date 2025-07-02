@@ -1,4 +1,4 @@
-// lib/services/geojson_service.dart (VERSÃO COMPLETA E CORRIGIDA)
+// lib/services/geojson_service.dart (VERSÃO FINAL CORRIGIDA E FLEXÍVEL)
 
 import 'dart:convert';
 import 'dart:io';
@@ -71,8 +71,15 @@ class GeoJsonService {
         
         if (geometry != null && (geometry['type'] == 'Polygon' || geometry['type'] == 'MultiPolygon')) {
           
-          if (properties['talhao_nome'] == null || properties['fazenda_nome'] == null) {
-              debugPrint("AVISO: Pulando polígono por falta de 'talhao_nome' ou 'fazenda_nome' nas propriedades.");
+          // <<< CORREÇÃO PRINCIPAL APLICADA AQUI >>>
+          // Tornando a verificação flexível para aceitar nomes curtos ou longos.
+          // Ele procura primeiro pelo nome curto ('talhao'), depois pelo longo ('talhao_nome').
+          final talhaoId = properties['talhao'] ?? properties['talhao_nome'] ?? properties['talhao_id'];
+          final fazendaId = properties['fazenda'] ?? properties['fazenda_nome'] ?? properties['fazenda_id'];
+
+          if (talhaoId == null || fazendaId == null) {
+              // A mensagem de log agora é mais clara para depuração.
+              debugPrint("AVISO: Pulando polígono por falta de um identificador de talhão/fazenda. Propriedades encontradas: $properties");
               continue;
           }
 
@@ -112,21 +119,24 @@ class GeoJsonService {
   }
 
   // Método antigo mantido apenas por segurança, mas não é usado no novo fluxo.
-  // Pode ser removido futuramente.
   Future<Map<String, dynamic>> importAndParseGeoJson() async {
      debugPrint("AVISO: O método obsoleto 'importAndParseGeoJson' foi chamado.");
      return {'polygons': [], 'points': []};
   }
 
   Polygon _createPolygon(List<LatLng> points, Map<String, dynamic> properties) {
+    // <<< CORREÇÃO APLICADA AQUI TAMBÉM >>>
+    // Usa a mesma lógica flexível para pegar o nome para o rótulo do mapa.
+    final label = (properties['talhao'] ?? properties['talhao_nome'] ?? properties['talhao_id'])?.toString();
+    
     return Polygon(
       points: points,
       color: const Color(0xFF617359).withAlpha(100),
       borderColor: const Color(0xFF1D4433),
       borderStrokeWidth: 1.5,
       isFilled: true,
-      label: properties['talhao_nome'] as String?,
-      labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+      label: label,
+      labelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10),
     );
   }
 }

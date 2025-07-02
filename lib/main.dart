@@ -90,7 +90,8 @@ class MyApp extends StatelessWidget {
           '/home': (context) => const HomePage(title: 'Geo Forest Analytics'),
           '/lista_projetos': (context) => const ListaProjetosPage(title: 'Meus Projetos'),
         },
-        navigatorObservers: [RouteObserver<PageRoute>()],
+        navigatorObservers: [MapProvider.routeObserver],
+        
         builder: (context, child) {
           ErrorWidget.builder = (FlutterErrorDetails details) {
             debugPrint('Caught a Flutter error: ${details.exception}');

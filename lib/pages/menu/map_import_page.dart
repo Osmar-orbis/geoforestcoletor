@@ -1,4 +1,4 @@
-// lib/pages/menu/map_import_page.dart (VERSÃO FINAL E CORRIGIDA)
+// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA E CORRIGIDA)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,15 +20,38 @@ class MapImportPage extends StatefulWidget {
   State<MapImportPage> createState() => _MapImportPageState();
 }
 
-class _MapImportPageState extends State<MapImportPage> {
+class _MapImportPageState extends State<MapImportPage> with RouteAware {
   final _mapController = MapController();
+  bool _isInitialLoad = true;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MapProvider>().clearAllMapData();
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Acessa o observer estático diretamente, sem usar context.read()
+    MapProvider.routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+    
+    // Limpa os dados na primeira vez que a tela é construída
+    if (_isInitialLoad) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.read<MapProvider>().clearAllMapData();
+      });
+      _isInitialLoad = false;
+    }
+  }
+  
+  @override
+  void didPopNext() {
+    super.didPopNext();
+    debugPrint("Mapa visível novamente, recarregando os dados das amostras...");
+    context.read<MapProvider>().loadSamplesParaAtividade(widget.atividade);
+  }
+
+  @override
+  void dispose() {
+    // Acessa o observer estático diretamente para remover a inscrição
+    MapProvider.routeObserver.unsubscribe(this);
+    super.dispose();
   }
 
   Color _getMarkerColor(SampleStatus status) {
@@ -150,8 +173,9 @@ class _MapImportPageState extends State<MapImportPage> {
       provider.toggleFollowingUser();
       HapticFeedback.mediumImpact();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível obter a localização: $e')));
+      }
     }
   }
 
@@ -176,9 +200,6 @@ class _MapImportPageState extends State<MapImportPage> {
     );
   }
 
-  // =========================================================================
-  // <<< CORREÇÃO 1: CORPO DO MÉTODO ADICIONADO >>>
-  // =========================================================================
   AppBar _buildDrawingAppBar(MapProvider mapProvider) {
     return AppBar(
       backgroundColor: Colors.grey.shade800,
@@ -241,14 +262,12 @@ class _MapImportPageState extends State<MapImportPage> {
                         final parcela = await DatabaseHelper.instance.getParcelaById(dbId);
                         if (!mounted || parcela == null) return;
 
-                        final foiAtualizado = await Navigator.push<bool>(
+                        await Navigator.push<bool>(
                           context,
                           MaterialPageRoute(builder: (context) => ColetaDadosPage(parcelaParaEditar: parcela))
                         );
                         
-                        if (foiAtualizado == true && mounted) {
-                          await context.read<MapProvider>().loadSamplesParaAtividade(widget.atividade);
-                        }
+                        // A lógica de recarregamento agora está no didPopNext()
                       },
                       child: Container(
                         decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 4, offset: const Offset(2, 2))]),
@@ -262,9 +281,6 @@ class _MapImportPageState extends State<MapImportPage> {
               if (isDrawing && mapProvider.drawnPoints.isNotEmpty)
                 PolylineLayer(polylines: [ Polyline(points: mapProvider.drawnPoints, strokeWidth: 2.0, color: Colors.red.withOpacity(0.8)), ]),
               if (isDrawing)
-                // =========================================================================
-                // <<< CORREÇÃO 2: ADICIONADO O 'child' FALTANTE NO MARKER >>>
-                // =========================================================================
                 MarkerLayer(
                   markers: mapProvider.drawnPoints.map((point) {
                     return Marker(

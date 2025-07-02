@@ -1,4 +1,4 @@
-// lib/providers/map_provider.dart (VERSÃO FINAL E COMPLETA)
+// lib/providers/map_provider.dart (VERSÃO FINAL - CORREÇÃO DE ENUM)
 
 import 'dart:async';
 import 'package:collection/collection.dart';
@@ -22,12 +22,16 @@ enum MapLayerType { ruas, satelite, sateliteMapbox }
 class MapProvider with ChangeNotifier {
   final _geoJsonService = GeoJsonService();
   final _dbHelper = DatabaseHelper.instance;
-  final _samplingService = SamplingService(); // Instância do serviço
+  final _samplingService = SamplingService();
+  
+  // Adicionando o RouteObserver
+  static final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
   List<ImportedFeature> _importedFeatures = [];
   List<SamplePoint> _samplePoints = [];
   bool _isLoading = false;
   Atividade? _currentAtividade;
+  Talhao? _currentTalhao; // Adicionando para o contexto do mapa
   MapLayerType _currentLayer = MapLayerType.satelite;
   Position? _currentUserPosition;
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -42,6 +46,7 @@ class MapProvider with ChangeNotifier {
   List<SamplePoint> get samplePoints => _samplePoints;
   bool get isLoading => _isLoading;
   Atividade? get currentAtividade => _currentAtividade;
+  Talhao? get currentTalhao => _currentTalhao; // Getter para o talhão atual
   MapLayerType get currentLayer => _currentLayer;
   Position? get currentUserPosition => _currentUserPosition;
   bool get isFollowingUser => _isFollowingUser;
@@ -62,11 +67,40 @@ class MapProvider with ChangeNotifier {
     return url;
   }
   
-  void switchMapLayer() { /* ... código existente ... */ }
-  void startDrawing() { /* ... código existente ... */ }
-  void cancelDrawing() { /* ... código existente ... */ }
-  void addDrawnPoint(LatLng point) { /* ... código existente ... */ }
-  void undoLastDrawnPoint() { /* ... código existente ... */ }
+  void switchMapLayer() {
+    _currentLayer = MapLayerType.values[(_currentLayer.index + 1) % MapLayerType.values.length];
+    notifyListeners();
+  }
+
+  void startDrawing() {
+    if (!_isDrawing) {
+      _isDrawing = true;
+      _drawnPoints.clear();
+      notifyListeners();
+    }
+  }
+
+  void cancelDrawing() {
+    if (_isDrawing) {
+      _isDrawing = false;
+      _drawnPoints.clear();
+      notifyListeners();
+    }
+  }
+
+  void addDrawnPoint(LatLng point) {
+    if (_isDrawing) {
+      _drawnPoints.add(point);
+      notifyListeners();
+    }
+  }
+
+  void undoLastDrawnPoint() {
+    if (_isDrawing && _drawnPoints.isNotEmpty) {
+      _drawnPoints.removeLast();
+      notifyListeners();
+    }
+  }
   
   void saveDrawnPolygon() {
     if (_drawnPoints.length < 3) {
@@ -86,9 +120,15 @@ class MapProvider with ChangeNotifier {
     _importedFeatures = [];
     _samplePoints = [];
     _currentAtividade = null;
+    _currentTalhao = null; // Limpa o talhão também
     if (_isFollowingUser) toggleFollowingUser();
     if (_isDrawing) cancelDrawing();
     notifyListeners();
+  }
+
+  // Novo método para definir o talhão atual
+  void setCurrentTalhao(Talhao talhao) {
+    _currentTalhao = talhao;
   }
 
   Future<String> processarCargaDeAtividade(Atividade atividade) async {
@@ -102,7 +142,7 @@ class MapProvider with ChangeNotifier {
 
     if (features.isEmpty) {
       _setLoading(false);
-      return "Nenhum talhão válido foi encontrado no arquivo GeoJSON. Verifique o formato e as propriedades ('talhao_nome', 'fazenda_nome').";
+      return "Nenhum talhão válido foi encontrado no arquivo GeoJSON. Verifique o formato e as propriedades.";
     }
 
     int fazendasCriadas = 0;
@@ -112,39 +152,47 @@ class MapProvider with ChangeNotifier {
     
     for (final feature in features) {
       final props = feature.properties;
-      final fazendaId = props['fazenda_id']?.toString() ?? props['fazenda_nome']?.toString();
-      final talhaoNome = props['talhao_nome']?.toString();
+      final fazendaIdentificador = (props['fazenda_id'] ?? props['fazenda_nome'] ?? props['fazenda'])?.toString();
+      final talhaoIdentificador = (props['talhao_nome'] ?? props['talhao_id'] ?? props['talhao'])?.toString();
       
-      if (fazendaId == null || talhaoNome == null) continue;
+      if (fazendaIdentificador == null || talhaoIdentificador == null) {
+        debugPrint("Aviso: Pulando polígono por falta de identificador de fazenda/talhão. Propriedades encontradas: $props");
+        continue;
+      }
 
       try {
-        if (!fazendaCache.containsKey(fazendaId)) {
+        if (!fazendaCache.containsKey(fazendaIdentificador)) {
           final fazenda = Fazenda(
-            id: fazendaId,
+            id: fazendaIdentificador,
             atividadeId: atividade.id!,
-            nome: props['fazenda_nome'],
-            municipio: props['fazenda_municipio'] ?? 'N/I',
-            estado: props['fazenda_estado'] ?? 'N/I',
+            nome: props['fazenda']?.toString() ?? fazendaIdentificador,
+            municipio: props['municipio']?.toString() ?? 'N/I',
+            estado: props['estado']?.toString() ?? 'N/I',
           );
           await (await _dbHelper.database).insert('fazendas', fazenda.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
-          fazendaCache[fazendaId] = fazenda;
+          fazendaCache[fazendaIdentificador] = fazenda;
           fazendasCriadas++;
         }
         
         Talhao talhao = Talhao(
-          fazendaId: fazendaId,
+          fazendaId: fazendaIdentificador,
           fazendaAtividadeId: atividade.id!,
-          nome: talhaoNome,
-          especie: props['talhao_especie']?.toString(),
-          areaHa: (props['talhao_area_ha'] as num?)?.toDouble(),
-          idadeAnos: (props['talhao_idade_anos'] as num?)?.toDouble(),
+          nome: talhaoIdentificador,
+          especie: props['especie']?.toString(),
+          areaHa: (props['area_ha'] as num?)?.toDouble(),
+          idadeAnos: (props['idade_anos'] as num?)?.toDouble(),
+          fazendaNome: fazendaCache[fazendaIdentificador]?.nome,
         );
-        await _dbHelper.insertTalhao(talhao); // A chave primária é autoincremento, então não há conflito
+        final talhaoId = await _dbHelper.insertTalhao(talhao);
+        feature.properties['db_talhao_id'] = talhaoId;
+        feature.properties['db_fazenda_id'] = fazendaIdentificador;
+        feature.properties['db_fazenda_nome'] = fazendaCache[fazendaIdentificador]?.nome;
+        feature.properties['db_talhao_nome'] = talhaoIdentificador;
         talhoesCriados++;
 
       } catch (e) {
         _setLoading(false);
-        return "Erro ao processar o talhão '$talhaoNome': ${e.toString()}. Verifique os dados e tente novamente.";
+        return "Erro ao processar o talhão '$talhaoIdentificador': ${e.toString()}. Verifique os dados e tente novamente.";
       }
     }
     
@@ -154,9 +202,6 @@ class MapProvider with ChangeNotifier {
     return "Importação concluída!\n- ${features.length} polígonos de talhão carregados.\n- ${fazendasCriadas} novas fazendas criadas.\n- ${talhoesCriados} novos talhões criados.";
   }
 
-  // =========================================================================
-  // <<< NOVO MÉTODO PARA GERAR AMOSTRAS >>>
-  // =========================================================================
   Future<String> gerarAmostrasParaAtividade({required double hectaresPerSample}) async {
     if (_importedFeatures.isEmpty) {
       return "Nenhum polígono de talhão carregado. Importe uma carga primeiro.";
@@ -182,32 +227,24 @@ class MapProvider with ChangeNotifier {
 
     for (final ponto in pontosGerados) {
       final props = ponto.properties;
-      final fazendaId = props['fazenda_id']?.toString() ?? props['fazenda_nome']?.toString();
-      final talhaoNome = props['talhao_nome']?.toString();
+      final talhaoIdSalvo = props['db_talhao_id'] as int?;
 
-      if (fazendaId == null || talhaoNome == null) continue;
-
-      // Busca o talhão correspondente no banco de dados.
-      // Esta busca é crucial e depende da criação correta na etapa de importação.
-      final talhoesDaFazenda = await _dbHelper.getTalhoesDaFazenda(fazendaId, _currentAtividade!.id!);
-      final talhaoCorreto = talhoesDaFazenda.firstWhereOrNull((t) => t.nome == talhaoNome);
-
-      if (talhaoCorreto != null) {
-        parcelasParaSalvar.add(Parcela(
-          talhaoId: talhaoCorreto.id,
+      if (talhaoIdSalvo != null) {
+         parcelasParaSalvar.add(Parcela(
+          talhaoId: talhaoIdSalvo,
           idParcela: pointIdCounter.toString(),
           areaMetrosQuadrados: 0,
           latitude: ponto.position.latitude,
           longitude: ponto.position.longitude,
           status: StatusParcela.pendente,
           dataColeta: DateTime.now(),
-          nomeFazenda: talhaoCorreto.fazendaNome,
-          idFazenda: talhaoCorreto.fazendaId,
-          nomeTalhao: talhaoCorreto.nome,
+          nomeFazenda: props['db_fazenda_nome']?.toString(),
+          idFazenda: props['db_fazenda_id']?.toString(),
+          nomeTalhao: props['db_talhao_nome']?.toString(),
         ));
         pointIdCounter++;
       } else {
-        debugPrint("Aviso: Talhão '$talhaoNome' não encontrado no banco para o ponto gerado.");
+        debugPrint("Aviso: Talhão com propriedades '$props' não encontrado no banco para o ponto gerado.");
       }
     }
 
@@ -219,8 +256,7 @@ class MapProvider with ChangeNotifier {
     _setLoading(false);
     return "${parcelasParaSalvar.length} amostras foram geradas e salvas com sucesso.";
   }
-
-  // Novo método para carregar todas as amostras de uma atividade
+  
   Future<void> loadSamplesParaAtividade(Atividade atividade) async {
     _setLoading(true);
     _samplePoints = [];
@@ -233,13 +269,29 @@ class MapProvider with ChangeNotifier {
            _samplePoints.add(SamplePoint(
               id: int.tryParse(p.idParcela) ?? 0,
               position: LatLng(p.latitude ?? 0, p.longitude ?? 0),
-              status: p.status == StatusParcela.concluida ? SampleStatus.completed : SampleStatus.untouched,
+              status: _getSampleStatus(p), // <<< CORREÇÃO APLICADA AQUI
               data: {'dbId': p.dbId}
           ));
         }
       }
     }
     _setLoading(false);
+  }
+
+  // Função auxiliar para traduzir o status
+  SampleStatus _getSampleStatus(Parcela parcela) {
+    if (parcela.exportada) {
+      return SampleStatus.exported;
+    }
+    switch (parcela.status) {
+      case StatusParcela.concluida:
+        return SampleStatus.completed;
+      case StatusParcela.emAndamento:
+        return SampleStatus.open;
+      case StatusParcela.pendente:
+      default:
+        return SampleStatus.untouched;
+    }
   }
 
   void toggleFollowingUser() {

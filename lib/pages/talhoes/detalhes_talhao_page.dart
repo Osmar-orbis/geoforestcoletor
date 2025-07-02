@@ -1,3 +1,5 @@
+// lib/pages/talhoes/detalhes_talhao_page.dart (VERSÃO COM NAVEGAÇÃO CORRIGIDA)
+
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
 import 'package:intl/intl.dart';
@@ -100,8 +102,6 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
     }
   }
 
-  
-
   Future<void> _navegarParaNovaParcela() async {
     final bool? recarregar = await Navigator.push(context, MaterialPageRoute(builder: (context) => ColetaDadosPage(talhao: widget.talhao)));
     if (recarregar == true && mounted) _carregarDados();
@@ -147,7 +147,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       identificador: 'Cubagem Avulsa',
     );
 
-    final bool? recarregar = await Navigator.push(
+    final recarregar = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CubagemDadosPage(
@@ -157,26 +157,44 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       ),
     );
 
+    if (recarregar != null && recarregar as bool && mounted) {
+      _carregarDados();
+    }
+  }
+
+  // <<< CORREÇÃO APLICADA AQUI >>>
+  Future<void> _navegarParaDetalhesParcela(Parcela parcela) async {
+    final recarregar = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ColetaDadosPage(parcelaParaEditar: parcela),
+      ),
+    );
+    // Se a tela de edição retornar `true`, recarrega a lista
     if (recarregar == true && mounted) {
       _carregarDados();
     }
   }
 
-  void _navegarParaDetalhesParcela(Parcela parcela) {
-    // Placeholder - Substitua com a navegação real
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Abrindo detalhes da parcela: ${parcela.idParcela}')),
+  // <<< CORREÇÃO APLICADA AQUI >>>
+  Future<void> _navegarParaDetalhesCubagem(CubagemArvore arvore) async {
+    final recarregar = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CubagemDadosPage(
+          metodo: arvore.tipoMedidaCAP, // O método é definido pela árvore existente
+          arvoreParaEditar: arvore,
+        ),
+      ),
     );
-  }
-
-  void _navegarParaDetalhesCubagem(CubagemArvore arvore) {
-    // Placeholder - Substitua com a navegação real
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Abrindo detalhes da cubagem: ${arvore.identificador}')),
-    );
+    // Se a tela de edição retornar um resultado, recarrega a lista
+    if (recarregar != null && recarregar is bool && recarregar && mounted) {
+      _carregarDados();
+    }
   }
 
   AppBar _buildAppBar() {
+    //... (código sem alterações)
     return AppBar(
       title: Text('Talhão: ${widget.talhao.nome}'),
       actions: [
@@ -200,6 +218,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
 
   @override
   Widget build(BuildContext context) {
+    //... (código sem alterações)
     return Scaffold(
       appBar: _isSelectionMode
           ? AppBar(
@@ -281,6 +300,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   }
 
   Widget _buildListaDeParcelas(List<Parcela> parcelas) {
+    //... (código sem alterações)
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 80),
       itemCount: parcelas.length,
@@ -318,6 +338,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   }
 
   Widget _buildListaDeCubagens(List<CubagemArvore> cubagens) {
+    //... (código sem alterações)
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 80),
       itemCount: cubagens.length,
