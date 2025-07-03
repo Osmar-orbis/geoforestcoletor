@@ -16,6 +16,7 @@ import 'package:geoforestcoletor/services/sampling_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sqflite/sqflite.dart';
+import 'dart:math' as math;
 
 enum MapLayerType { ruas, satelite, sateliteMapbox }
 
@@ -221,25 +222,40 @@ class MapProvider with ChangeNotifier {
     int pointIdCounter = 1;
 
     for (final ponto in pontosGerados) {
-      final props = ponto.properties;
-      final talhaoIdSalvo = props['db_talhao_id'] as int?;
-      if (talhaoIdSalvo != null) {
-         parcelasParaSalvar.add(Parcela(
-          talhaoId: talhaoIdSalvo,
-          idParcela: pointIdCounter.toString(), areaMetrosQuadrados: 0,
-          latitude: ponto.position.latitude, longitude: ponto.position.longitude,
-          status: StatusParcela.pendente, dataColeta: DateTime.now(),
-          nomeFazenda: props['db_fazenda_nome']?.toString(),
-          idFazenda: props['db_fazenda_id']?.toString(),
-          nomeTalhao: props['db_talhao_nome']?.toString(),
-        ));
-        pointIdCounter++;
-      }
-    }
+  final props = ponto.properties;
+  final talhaoIdSalvo = props['db_talhao_id'] as int?;
 
-    if (parcelasParaSalvar.isNotEmpty) {
+  if (talhaoIdSalvo != null) {
+    // 1. Tenta ler a área da parcela dos atributos do GeoJSON.
+    // O '?? 0.0' garante que, se o atributo não existir, o valor será 0.
+    final double areaDaParcela = (props['area_m2'] as num?)?.toDouble() ?? 0.0;
+    
+    // 2. Pré-calcula o raio se a área for maior que zero.
+    final double? raioCalculado = areaDaParcela > 0 
+      ? math.sqrt(areaDaParcela / math.pi) 
+      : null;
+
+    parcelasParaSalvar.add(Parcela(
+      talhaoId: talhaoIdSalvo,
+      idParcela: pointIdCounter.toString(),
+      areaMetrosQuadrados: areaDaParcela, // <<< USA O VALOR DO GEOJSON
+      raio: raioCalculado,                // <<< USA O RAIO CALCULADO
+      largura: null, // Deixa nulo, pois assumimos parcela circular por padrão
+      comprimento: null,
+      latitude: ponto.position.latitude,
+      longitude: ponto.position.longitude,
+      status: StatusParcela.pendente,
+      dataColeta: DateTime.now(),
+      nomeFazenda: props['db_fazenda_nome']?.toString(),
+      idFazenda: props['db_fazenda_id']?.toString(),
+      nomeTalhao: props['db_talhao_nome']?.toString(),
+    ));
+    pointIdCounter++;
+  }
+}
+  if (parcelasParaSalvar.isNotEmpty) {
       await _dbHelper.saveBatchParcelas(parcelasParaSalvar);
-      await loadSamplesParaAtividade();
+      await loadSamplesParaAtividade(); // Força o recarregamento dos pontos no mapa
     }
     
     // <<< CHAMADA AUTOMÁTICA PARA O SERVIÇO DE OTIMIZAÇÃO >>>

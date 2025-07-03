@@ -443,6 +443,32 @@ class _InventarioPageState extends State<InventarioPage> {
                   ),
                 ),
               _buildSummaryCard(),
+              
+              // =======================================================
+    // <<< COLE O CÓDIGO DO BOTÃO EXATAMENTE AQUI >>>
+    // =======================================================
+    if (!_isReadOnly) // Só mostra o botão se não estiver em modo de leitura
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              // Se o filtro não está ativo, primeiro calcula as dominantes
+              if (!_mostrandoApenasDominantes) {
+                _identificarArvoresDominantes();
+              }
+              // Depois, alterna o estado do filtro para mostrar/ocultar
+              setState(() => _mostrandoApenasDominantes = !_mostrandoApenasDominantes);
+            },
+            icon: Icon(_mostrandoApenasDominantes ? Icons.filter_list_off : Icons.filter_list),
+            label: Text(_mostrandoApenasDominantes ? 'Mostrar Todas' : 'Encontrar e Filtrar Dominantes'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ),
               _buildHeaderRow(),
               Expanded(
                 child: _arvoresColetadas.isEmpty
