@@ -1,10 +1,10 @@
-// lib/pages/menu/home_page.dart (VERSÃO COMPLETA E CORRIGIDA)
+// lib/pages/menu/home_page.dart
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/pages/analises/analise_selecao_page.dart';
 import 'package:geoforestcoletor/pages/menu/configuracoes_page.dart';
 import 'package:geoforestcoletor/pages/projetos/lista_projetos_page.dart';
-import 'package:geoforestcoletor/pages/planejamento/selecao_atividade_mapa_page.dart'; // <<< IMPORT ADICIONADO
+import 'package:geoforestcoletor/pages/planejamento/selecao_atividade_mapa_page.dart';
 import 'package:geoforestcoletor/providers/map_provider.dart';
 import 'package:geoforestcoletor/services/export_service.dart';
 import 'package:geoforestcoletor/widgets/menu_card.dart';
@@ -19,6 +19,56 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  void _mostrarDialogoImportacao(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Wrap(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+            child: Text('O que você deseja importar?', style: Theme.of(context).textTheme.titleLarge),
+          ),
+          ListTile(
+            leading: const Icon(Icons.table_rows_outlined, color: Colors.green),
+            title: const Text('Coletas de Parcela (Inventário)'),
+            subtitle: const Text('Importa um arquivo CSV com dados de árvores e parcelas.'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.push(context, MaterialPageRoute(
+                builder: (context) => const ListaProjetosPage(
+                  title: 'Importar para o Projeto...',
+                  isImporting: true,
+                  importType: 'parcela',
+                ),
+              ));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.straighten_outlined, color: Colors.brown),
+            title: const Text('Dados de Cubagem'),
+            subtitle: const Text('Importa um arquivo CSV com dados de cubagem e seções.'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.push(context, MaterialPageRoute(
+                builder: (context) => const ListaProjetosPage(
+                  title: 'Importar Cubagem para...',
+                  isImporting: true,
+                  importType: 'cubagem',
+                ),
+              ));
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.rule_folder_outlined, color: Colors.grey.shade400),
+            title: const Text('Auditoria (Em breve)'),
+            subtitle: const Text('Importa dados para o módulo de auditoria.'),
+            onTap: null,
+          ),
+        ],
+      ),
+    );
+  }
+
   void _abrirAnalistaDeDados(BuildContext context) {
     Navigator.push(
       context,
@@ -28,9 +78,7 @@ class _HomePageState extends State<HomePage> {
 
   void _mostrarDialogoExportacao(BuildContext context) {
     final exportService = ExportService();
-    final mapProvider = context.read<MapProvider>();
 
-    // Função interna para o sub-diálogo da coleta de parcelas
     void _mostrarDialogoParcelas(BuildContext mainDialogContext) {
       showDialog(
         context: mainDialogContext,
@@ -58,7 +106,6 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    // Função interna para o sub-diálogo da cubagem
     void _mostrarDialogoCubagem(BuildContext mainDialogContext) {
       showDialog(
         context: mainDialogContext,
@@ -99,59 +146,35 @@ class _HomePageState extends State<HomePage> {
               child: Text('Escolha o que deseja exportar',
                   style: Theme.of(context).textTheme.titleLarge),
             ),
-
-            // --- Opção 1: Coletas de Parcela (chama o sub-diálogo) ---
             ListTile(
               leading:
                   const Icon(Icons.table_rows_outlined, color: Colors.green),
               title: const Text('Coletas de Parcela (CSV)'),
               subtitle: const Text('Exporta os dados de parcelas e árvores.'),
               onTap: () {
-                Navigator.of(ctx).pop(); // Fecha o menu principal
-                _mostrarDialogoParcelas(
-                    context); // Abre o diálogo de escolha para parcelas
+                Navigator.of(ctx).pop(); 
+                _mostrarDialogoParcelas(context);
               },
             ),
-
-            // --- Opção 2: Cubagens (chama o sub-diálogo) ---
             ListTile(
               leading:
                   const Icon(Icons.table_chart_outlined, color: Colors.brown),
               title: const Text('Cubagens Rigorosas (CSV)'),
               subtitle: const Text('Exporta os dados de cubagens e seções.'),
               onTap: () {
-                Navigator.of(ctx).pop(); // Fecha o menu principal
-                _mostrarDialogoCubagem(
-                    context); // Abre o diálogo de escolha para cubagens
+                Navigator.of(ctx).pop();
+                _mostrarDialogoCubagem(context);
               },
             ),
-
-            const Divider(), // Separador visual
-
-            // --- Opção 3: Mapa ---
+            const Divider(), 
             ListTile(
               leading: const Icon(Icons.map_outlined, color: Colors.purple),
-              title: const Text('Projeto do Mapa (GeoJSON)'),
+              title: const Text('Plano de Amostragem (GeoJSON)'),
               subtitle:
-                  const Text('Exporta os polígonos e pontos do mapa atual.'),
+                  const Text('Exporta o plano de amostragem do mapa.'),
               onTap: () {
                 Navigator.of(ctx).pop();
-                if (mapProvider.polygons.isEmpty &&
-                    mapProvider.samplePoints.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text(
-                          'Não há projeto carregado no mapa para exportar.')));
-                  return;
-                }
-                // ==========================================================
-                // <<< CHAMADA CORRIGIDA AQUI >>>
-                // Os parâmetros farmName e blockName foram removidos.
-                // ==========================================================
-                exportService.exportProjectAsGeoJson(
-                  context: context,
-                  areaPolygons: mapProvider.polygons,
-                  samplePoints: mapProvider.samplePoints,
-                );
+                context.read<MapProvider>().exportarPlanoDeAmostragem(context);
               },
             ),
           ],
@@ -172,7 +195,6 @@ class _HomePageState extends State<HomePage> {
           mainAxisSpacing: 12.0,
           childAspectRatio: 1.0,
           children: [
-            // CARD PROJETOS (Mantido)
             MenuCard(
               icon: Icons.folder_copy_outlined,
               label: 'Projetos e Coletas',
@@ -183,13 +205,10 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-            
-            // NOVO CARD
             MenuCard(
               icon: Icons.map_outlined,
               label: 'Planejamento de Campo',
               onTap: () {
-                // <<< NAVEGAÇÃO CORRIGIDA AQUI >>>
                 Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -197,34 +216,21 @@ class _HomePageState extends State<HomePage> {
                             const SelecaoAtividadeMapaPage()));
               },
             ),
-
-            // CARD ANALISTA (Mantido)
             MenuCard(
               icon: Icons.insights_outlined,
               label: 'GeoForest Analista',
               onTap: () => _abrirAnalistaDeDados(context),
             ),
-            
-            // CARD IMPORTAR (Movido e ajustado)
             MenuCard(
               icon: Icons.download_for_offline_outlined,
-              label: 'Importar Coletas (CSV)',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ListaProjetosPage(title: 'Importar para...', isImporting: true),
-                ),
-              ),
+              label: 'Importar Dados (CSV)',
+              onTap: () => _mostrarDialogoImportacao(context),
             ),
-            
-            // CARD EXPORTAR (Movido)
             MenuCard(
               icon: Icons.upload_file_outlined,
               label: 'Exportar Dados',
               onTap: () => _mostrarDialogoExportacao(context),
             ),
-            
-            // CARD CONFIGURAÇÕES (Mantido)
             MenuCard(
               icon: Icons.settings_outlined,
               label: 'Configurações',

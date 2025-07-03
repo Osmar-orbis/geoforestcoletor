@@ -1,4 +1,4 @@
-// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA COM MARCADOR MELHORADO)
+// lib/pages/menu/map_import_page.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -37,7 +37,6 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
   @override
   void dispose() {
     MapProvider.routeObserver.unsubscribe(this);
-    // Garante que o stream de GPS seja desligado ao sair da tela.
     final mapProvider = Provider.of<MapProvider>(context, listen: false);
     if (mapProvider.isFollowingUser) {
       mapProvider.toggleFollowingUser();
@@ -63,7 +62,7 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
 
   Future<void> _handleImport() async {
     final provider = context.read<MapProvider>();
-    final resultMessage = await provider.processarCargaDeAtividade();
+    final resultMessage = await provider.processarImportacaoDeArquivo();
     
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(resultMessage), duration: const Duration(seconds: 5)));
@@ -71,6 +70,10 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
     if (provider.polygons.isNotEmpty) {
       _mapController.fitCamera(CameraFit.bounds(
           bounds: LatLngBounds.fromPoints(provider.polygons.expand((p) => p.points).toList()),
+          padding: const EdgeInsets.all(50.0)));
+    } else if (provider.samplePoints.isNotEmpty) {
+      _mapController.fitCamera(CameraFit.bounds(
+          bounds: LatLngBounds.fromPoints(provider.samplePoints.map((p) => p.position).toList()),
           padding: const EdgeInsets.all(50.0)));
     }
   }
@@ -176,6 +179,11 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
     return AppBar(
       title: Text('Planejamento: $atividadeTipo'),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.share_outlined),
+          onPressed: mapProvider.isLoading ? null : () => context.read<MapProvider>().exportarPlanoDeAmostragem(context),
+          tooltip: 'Exportar Plano de Amostragem',
+        ),
         if(mapProvider.polygons.isNotEmpty)
           IconButton(
               icon: const Icon(Icons.grid_on_sharp),
@@ -188,7 +196,7 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
         IconButton(
             icon: const Icon(Icons.file_upload_outlined),
             onPressed: mapProvider.isLoading ? null : _handleImport,
-            tooltip: 'Importar Carga de Talhões (GeoJSON)'),
+            tooltip: 'Importar Arquivo (.json/.geojson)'),
       ],
     );
   }
@@ -289,7 +297,6 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
                   }).toList(),
                 ),
 
-              // <<< MARCADOR DE LOCALIZAÇÃO MELHORADO >>>
               if (currentUserPosition != null)
                 MarkerLayer(
                   markers: [
@@ -297,7 +304,7 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
                       width: 80.0,
                       height: 80.0,
                       point: LatLng(currentUserPosition.latitude, currentUserPosition.longitude),
-                      child: const LocationMarker(), // Usa o widget customizado
+                      child: const LocationMarker(),
                     ),
                   ],
                 ),
@@ -352,9 +359,6 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
   }
 }
 
-// =========================================================================
-// WIDGET CUSTOMIZADO PARA O MARCADOR DE LOCALIZAÇÃO
-// =========================================================================
 class LocationMarker extends StatefulWidget {
   const LocationMarker({super.key});
 
@@ -391,7 +395,6 @@ class _LocationMarkerState extends State<LocationMarker> with SingleTickerProvid
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Anel externo que pulsa
         FadeTransition(
           opacity: Tween<double>(begin: 1.0, end: 0.0).animate(_animation),
           child: ScaleTransition(
@@ -406,7 +409,6 @@ class _LocationMarkerState extends State<LocationMarker> with SingleTickerProvid
             ),
           ),
         ),
-        // Ponto central fixo
         Container(
           width: 20.0,
           height: 20.0,

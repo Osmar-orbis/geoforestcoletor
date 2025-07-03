@@ -1,4 +1,4 @@
-// lib/services/geojson_service.dart (VERSÃO FINAL CORRIGIDA E FLEXÍVEL)
+// lib/services/geojson_service.dart
 
 import 'dart:convert';
 import 'dart:io';
@@ -17,9 +17,8 @@ class ImportedFeature {
 }
 
 class GeoJsonService {
-  // Novo método para importar múltiplos talhões com suas propriedades.
-  Future<List<ImportedFeature>> importAndParseMultiTalhaoGeoJson() async {
-    // Nova estratégia de solicitação de permissão para Android 13+
+  Future<File?> _pickFile() async {
+    // Permissão para Android 13+
     Map<Permission, PermissionStatus> statuses = await [
       Permission.photos,
       Permission.videos,
@@ -32,10 +31,11 @@ class GeoJsonService {
       debugPrint("AVISO: Permissão de mídia negada. Tentando fallback para 'storage'.");
       if (await Permission.storage.request().isDenied) {
         debugPrint("ERRO: A permissão de storage (fallback) também foi negada.");
-        return [];
+        return null;
       }
     }
 
+    // <<< CORREÇÃO: Procura por .geojson E .json >>>
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['geojson', 'json'],
@@ -43,14 +43,18 @@ class GeoJsonService {
 
     if (result == null || result.files.single.path == null) {
       debugPrint("DEBUG: Nenhum arquivo selecionado.");
-      return [];
+      return null;
     }
+    return File(result.files.single.path!);
+  }
+
+  // Método para importar polígonos (Carga de Talhões)
+  Future<List<ImportedFeature>> importAndParseMultiTalhaoGeoJson() async {
+    final file = await _pickFile();
+    if (file == null) return [];
 
     try {
-      final filePath = result.files.single.path!;
-      final file = File(filePath);
       final fileContent = await file.readAsString();
-      
       if (fileContent.isEmpty) {
         debugPrint("ERRO: O conteúdo do arquivo está vazio!");
         return [];
@@ -71,14 +75,10 @@ class GeoJsonService {
         
         if (geometry != null && (geometry['type'] == 'Polygon' || geometry['type'] == 'MultiPolygon')) {
           
-          // <<< CORREÇÃO PRINCIPAL APLICADA AQUI >>>
-          // Tornando a verificação flexível para aceitar nomes curtos ou longos.
-          // Ele procura primeiro pelo nome curto ('talhao'), depois pelo longo ('talhao_nome').
-          final talhaoId = properties['talhao'] ?? properties['talhao_nome'] ?? properties['talhao_id'];
-          final fazendaId = properties['fazenda'] ?? properties['fazenda_nome'] ?? properties['fazenda_id'];
+          final talhaoId = properties['talhao_nome'] ?? properties['talhao_id'] ?? properties['talhao'];
+          final fazendaId = properties['fazenda_nome'] ?? properties['fazenda_id'] ?? properties['fazenda'];
 
           if (talhaoId == null || fazendaId == null) {
-              // A mensagem de log agora é mais clara para depuração.
               debugPrint("AVISO: Pulando polígono por falta de um identificador de talhão/fazenda. Propriedades encontradas: $properties");
               continue;
           }
@@ -117,17 +117,50 @@ class GeoJsonService {
       return [];
     }
   }
+  
+  Future<List<Map<String, dynamic>>> importAmostragemGeoJson() async {
+    final file = await _pickFile();
+    if (file == null) return [];
 
-  // Método antigo mantido apenas por segurança, mas não é usado no novo fluxo.
-  Future<Map<String, dynamic>> importAndParseGeoJson() async {
-     debugPrint("AVISO: O método obsoleto 'importAndParseGeoJson' foi chamado.");
-     return {'polygons': [], 'points': []};
+    try {
+      final fileContent = await file.readAsString();
+      if (fileContent.isEmpty) {
+        debugPrint("ERRO: O conteúdo do arquivo de amostragem está vazio!");
+        return [];
+      }
+      
+      final geoJsonData = json.decode(fileContent);
+
+      if (geoJsonData['features'] == null) {
+        debugPrint("ERRO: O JSON não contém a chave 'features'.");
+        return [];
+      }
+
+      final List<Map<String, dynamic>> importedPoints = [];
+      for (var feature in geoJsonData['features']) {
+        final geometry = feature['geometry'];
+        final properties = feature['properties'] as Map<String, dynamic>? ?? {};
+
+        if (geometry != null && geometry['type'] == 'Point' && geometry['coordinates'] != null) {
+          final pointProperties = Map<String, dynamic>.from(properties);
+          pointProperties['longitude'] = geometry['coordinates'][0];
+          pointProperties['latitude'] = geometry['coordinates'][1];
+          importedPoints.add(pointProperties);
+        }
+      }
+      
+      debugPrint("DEBUG: Importação de amostragem concluída. ${importedPoints.length} pontos lidos.");
+      return importedPoints;
+      
+    } catch (e, s) {
+      debugPrint("ERRO CRÍTICO ao importar GeoJSON de amostragem: $e");
+      debugPrint("Stacktrace: $s");
+      return [];
+    }
   }
 
   Polygon _createPolygon(List<LatLng> points, Map<String, dynamic> properties) {
-    // <<< CORREÇÃO APLICADA AQUI TAMBÉM >>>
-    // Usa a mesma lógica flexível para pegar o nome para o rótulo do mapa.
-    final label = (properties['talhao'] ?? properties['talhao_nome'] ?? properties['talhao_id'])?.toString();
+    final label = (properties['talhao_nome'] ?? properties['talhao_id'] ?? properties['talhao'])?.toString();
     
     return Polygon(
       points: points,

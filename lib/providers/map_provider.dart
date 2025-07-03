@@ -1,4 +1,4 @@
-// lib/providers/map_provider.dart (VERSÃO FINAL COM OTIMIZAÇÃO AUTOMÁTICA)
+// lib/providers/map_provider.dart
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -10,13 +10,13 @@ import 'package:geoforestcoletor/models/fazenda_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/sample_point.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/services/activity_optimizer_service.dart'; // <<< IMPORT DO NOVO SERVIÇO
+import 'package:geoforestcoletor/services/activity_optimizer_service.dart';
+import 'package:geoforestcoletor/services/export_service.dart';
 import 'package:geoforestcoletor/services/geojson_service.dart';
 import 'package:geoforestcoletor/services/sampling_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sqflite/sqflite.dart';
-import 'dart:math' as math;
 
 enum MapLayerType { ruas, satelite, sateliteMapbox }
 
@@ -24,8 +24,8 @@ class MapProvider with ChangeNotifier {
   final _geoJsonService = GeoJsonService();
   final _dbHelper = DatabaseHelper.instance;
   final _samplingService = SamplingService();
-  // <<< INSTÂNCIA DO NOVO SERVIÇO >>>
   late final ActivityOptimizerService _optimizerService;
+  final _exportService = ExportService();
   
   static final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
@@ -40,7 +40,6 @@ class MapProvider with ChangeNotifier {
   bool _isDrawing = false;
   final List<LatLng> _drawnPoints = [];
 
-  // <<< CONSTRUTOR PARA INICIALIZAR O SERVIÇO >>>
   MapProvider() {
     _optimizerService = ActivityOptimizerService(dbHelper: _dbHelper);
   }
@@ -134,21 +133,31 @@ class MapProvider with ChangeNotifier {
     _currentAtividade = atividade;
   }
 
-  Future<String> processarCargaDeAtividade() async {
+  Future<String> processarImportacaoDeArquivo() async {
     if (_currentAtividade == null) {
       return "Erro: Nenhuma atividade selecionada para o planejamento.";
     }
     _setLoading(true);
+
+    final pontosImportados = await _geoJsonService.importAmostragemGeoJson();
+
+    if (pontosImportados.isNotEmpty) {
+      return await _processarPlanoDeAmostragemImportado(pontosImportados);
+    } else {
+      final poligonosImportados = await _geoJsonService.importAndParseMultiTalhaoGeoJson();
+      if (poligonosImportados.isNotEmpty) {
+        return await _processarCargaDeTalhoesImportada(poligonosImportados);
+      }
+    }
+
+    _setLoading(false);
+    return "Nenhum dado válido (polígonos ou pontos) foi encontrado no arquivo GeoJSON.";
+  }
+
+  Future<String> _processarCargaDeTalhoesImportada(List<ImportedFeature> features) async {
     _importedFeatures = [];
     _samplePoints = [];
     notifyListeners();
-
-    final features = await _geoJsonService.importAndParseMultiTalhaoGeoJson();
-
-    if (features.isEmpty) {
-      _setLoading(false);
-      return "Nenhum talhão válido foi encontrado no arquivo GeoJSON.";
-    }
 
     int fazendasCriadas = 0;
     int talhoesCriados = 0;
@@ -166,9 +175,9 @@ class MapProvider with ChangeNotifier {
           final fazenda = Fazenda(
             id: fazendaIdentificador,
             atividadeId: _currentAtividade!.id!,
-            nome: props['fazenda']?.toString() ?? fazendaIdentificador,
-            municipio: props['municipio']?.toString() ?? 'N/I',
-            estado: props['estado']?.toString() ?? 'N/I',
+            nome: props['fazenda_nome']?.toString() ?? fazendaIdentificador,
+            municipio: props['fazenda_municipio']?.toString() ?? 'N/I',
+            estado: props['fazenda_estado']?.toString() ?? 'N/I',
           );
           await (await _dbHelper.database).insert('fazendas', fazenda.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
           fazendaCache[fazendaIdentificador] = fazenda;
@@ -179,10 +188,11 @@ class MapProvider with ChangeNotifier {
           fazendaId: fazendaIdentificador,
           fazendaAtividadeId: _currentAtividade!.id!,
           nome: talhaoIdentificador,
-          especie: props['especie']?.toString(),
-          areaHa: (props['area_ha'] as num?)?.toDouble(),
-          idadeAnos: (props['idade_anos'] as num?)?.toDouble(),
+          especie: props['talhao_especie']?.toString(),
+          areaHa: (props['talhao_area_ha'] as num?)?.toDouble(),
+          idadeAnos: (props['talhao_idade_anos'] as num?)?.toDouble(),
           fazendaNome: fazendaCache[fazendaIdentificador]?.nome,
+          espacamento: props['talhao_espacamento']?.toString(),
         );
         final talhaoId = await _dbHelper.insertTalhao(talhao);
         feature.properties['db_talhao_id'] = talhaoId;
@@ -199,7 +209,50 @@ class MapProvider with ChangeNotifier {
     _importedFeatures = features;
     _setLoading(false);
     
-    return "Importação concluída: ${features.length} polígonos, ${fazendasCriadas} novas fazendas e ${talhoesCriados} novos talhões criados.";
+    return "Importação de Carga concluída: ${features.length} polígonos, ${fazendasCriadas} novas fazendas e ${talhoesCriados} novos talhões criados.";
+  }
+
+  Future<String> _processarPlanoDeAmostragemImportado(List<Map<String, dynamic>> pontos) async {
+    _importedFeatures = [];
+    _samplePoints = [];
+    notifyListeners();
+
+    final List<Parcela> parcelasParaSalvar = [];
+    for (final props in pontos) {
+      final talhaoProps = Talhao(
+        fazendaId: props['fazenda_id'],
+        fazendaAtividadeId: _currentAtividade!.id!,
+        nome: props['talhao_nome'],
+        especie: props['talhao_especie'],
+        areaHa: props['talhao_area_ha'],
+        idadeAnos: props['talhao_idade_anos'],
+        espacamento: props['talhao_espacamento'],
+        fazendaNome: props['fazenda_nome'],
+      );
+
+      final talhaoId = await _dbHelper.insertTalhao(talhaoProps);
+      
+      parcelasParaSalvar.add(Parcela(
+        talhaoId: talhaoId,
+        idParcela: props['parcela_id_plano'].toString(),
+        areaMetrosQuadrados: (props['parcela_area_m2'] as num?)?.toDouble() ?? 0.0,
+        latitude: props['latitude'],
+        longitude: props['longitude'],
+        status: StatusParcela.pendente,
+        dataColeta: DateTime.now(),
+        nomeFazenda: props['fazenda_nome'],
+        idFazenda: props['fazenda_id'],
+        nomeTalhao: props['talhao_nome'],
+      ));
+    }
+    
+    if (parcelasParaSalvar.isNotEmpty) {
+      await _dbHelper.saveBatchParcelas(parcelasParaSalvar);
+      await loadSamplesParaAtividade();
+    }
+
+    _setLoading(false);
+    return "${parcelasParaSalvar.length} pontos de amostragem importados e salvos com sucesso.";
   }
 
   Future<String> gerarAmostrasParaAtividade({required double hectaresPerSample}) async {
@@ -222,48 +275,31 @@ class MapProvider with ChangeNotifier {
     int pointIdCounter = 1;
 
     for (final ponto in pontosGerados) {
-  final props = ponto.properties;
-  final talhaoIdSalvo = props['db_talhao_id'] as int?;
+      final props = ponto.properties;
+      final talhaoIdSalvo = props['db_talhao_id'] as int?;
+      if (talhaoIdSalvo != null) {
+         parcelasParaSalvar.add(Parcela(
+          talhaoId: talhaoIdSalvo,
+          idParcela: pointIdCounter.toString(), areaMetrosQuadrados: 0,
+          latitude: ponto.position.latitude, longitude: ponto.position.longitude,
+          status: StatusParcela.pendente, dataColeta: DateTime.now(),
+          nomeFazenda: props['db_fazenda_nome']?.toString(),
+          idFazenda: props['db_fazenda_id']?.toString(),
+          nomeTalhao: props['db_talhao_nome']?.toString(),
+        ));
+        pointIdCounter++;
+      }
+    }
 
-  if (talhaoIdSalvo != null) {
-    // 1. Tenta ler a área da parcela dos atributos do GeoJSON.
-    // O '?? 0.0' garante que, se o atributo não existir, o valor será 0.
-    final double areaDaParcela = (props['area_m2'] as num?)?.toDouble() ?? 0.0;
-    
-    // 2. Pré-calcula o raio se a área for maior que zero.
-    final double? raioCalculado = areaDaParcela > 0 
-      ? math.sqrt(areaDaParcela / math.pi) 
-      : null;
-
-    parcelasParaSalvar.add(Parcela(
-      talhaoId: talhaoIdSalvo,
-      idParcela: pointIdCounter.toString(),
-      areaMetrosQuadrados: areaDaParcela, // <<< USA O VALOR DO GEOJSON
-      raio: raioCalculado,                // <<< USA O RAIO CALCULADO
-      largura: null, // Deixa nulo, pois assumimos parcela circular por padrão
-      comprimento: null,
-      latitude: ponto.position.latitude,
-      longitude: ponto.position.longitude,
-      status: StatusParcela.pendente,
-      dataColeta: DateTime.now(),
-      nomeFazenda: props['db_fazenda_nome']?.toString(),
-      idFazenda: props['db_fazenda_id']?.toString(),
-      nomeTalhao: props['db_talhao_nome']?.toString(),
-    ));
-    pointIdCounter++;
-  }
-}
-  if (parcelasParaSalvar.isNotEmpty) {
+    if (parcelasParaSalvar.isNotEmpty) {
       await _dbHelper.saveBatchParcelas(parcelasParaSalvar);
-      await loadSamplesParaAtividade(); // Força o recarregamento dos pontos no mapa
+      await loadSamplesParaAtividade();
     }
     
-    // <<< CHAMADA AUTOMÁTICA PARA O SERVIÇO DE OTIMIZAÇÃO >>>
     final int talhoesRemovidos = await _optimizerService.otimizarAtividade(_currentAtividade!.id!);
     
     _setLoading(false);
     
-    // <<< MENSAGEM DE RETORNO MELHORADA >>>
     String mensagemFinal = "${parcelasParaSalvar.length} amostras foram geradas e salvas.";
     if (talhoesRemovidos > 0) {
       mensagemFinal += " $talhoesRemovidos talhões vazios foram otimizados.";
@@ -292,21 +328,6 @@ class MapProvider with ChangeNotifier {
       }
     }
     _setLoading(false);
-  }
-
-  SampleStatus _getSampleStatus(Parcela parcela) {
-    if (parcela.exportada) {
-      return SampleStatus.exported;
-    }
-    switch (parcela.status) {
-      case StatusParcela.concluida:
-        return SampleStatus.completed;
-      case StatusParcela.emAndamento:
-        return SampleStatus.open;
-      case StatusParcela.pendente:
-      default:
-        return SampleStatus.untouched;
-    }
   }
 
   void toggleFollowingUser() {
@@ -338,5 +359,36 @@ class MapProvider with ChangeNotifier {
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+
+  SampleStatus _getSampleStatus(Parcela parcela) {
+    if (parcela.exportada) {
+      return SampleStatus.exported;
+    }
+    switch (parcela.status) {
+      case StatusParcela.concluida:
+        return SampleStatus.completed;
+      case StatusParcela.emAndamento:
+        return SampleStatus.open;
+      case StatusParcela.pendente:
+        return SampleStatus.untouched;
+    }
+  }
+
+  Future<void> exportarPlanoDeAmostragem(BuildContext context) async {
+    final List<int> parcelaIds = samplePoints.map((p) => p.data['dbId'] as int).toList();
+
+    if (parcelaIds.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Nenhum plano de amostragem para exportar.'),
+          backgroundColor: Colors.orange,
+        ));
+        return;
+    }
+
+    await _exportService.exportarPlanoDeAmostragem(
+      context: context,
+      parcelaIds: parcelaIds,
+    );
   }
 }
