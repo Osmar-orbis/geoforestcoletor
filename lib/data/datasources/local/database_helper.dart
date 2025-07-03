@@ -62,7 +62,10 @@ class DatabaseHelper {
 
     return await openDatabase(
       join(await getDatabasesPath(), 'geoforestcoletor.db'),
-      version: 22, 
+      // =======================================================
+      // <<< MUDANÇA 1: Versão incrementada para 23 >>>
+      // =======================================================
+      version: 23, 
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -88,6 +91,7 @@ class DatabaseHelper {
         tipo TEXT NOT NULL,
         descricao TEXT NOT NULL,
         dataCriacao TEXT NOT NULL,
+        metodoCubagem TEXT, 
         FOREIGN KEY (projetoId) REFERENCES projetos (id) ON DELETE CASCADE
       )
     ''');
@@ -228,6 +232,12 @@ class DatabaseHelper {
         case 22:
           await db.execute('ALTER TABLE talhoes ADD COLUMN espacamento TEXT');
           await db.execute('ALTER TABLE parcelas ADD COLUMN photoPaths TEXT');
+          break;
+        // =======================================================
+        // <<< MUDANÇA 2: Nova migração para a versão 23 >>>
+        // =======================================================
+        case 23:
+          await db.execute('ALTER TABLE atividades ADD COLUMN metodoCubagem TEXT');
           break;
       }
     }
@@ -606,11 +616,6 @@ class DatabaseHelper {
   }
 
   // --- MÉTODOS DE EXPORTAÇÃO E IMPORTAÇÃO ---
-  Future<void> exportarCubagens(BuildContext context) async { }
-  Future<void> exportarUmaCubagem(BuildContext context, int arvoreId) async { }
-  Future<void> exportarDadosDeMultiplosTalhoes(BuildContext context, List<int> talhaoIds) async { }
-  Future<void> exportarCubagensDeMultiplosTalhoes(BuildContext context, List<int> talhaoIds) async { }
-
   Future<List<Parcela>> getUnexportedConcludedParcelas() async {
     final db = await database;
     final maps = await db.query('parcelas', where: 'status = ? AND exportada = ?', whereArgs: [StatusParcela.concluida.name, 0]);
@@ -748,7 +753,7 @@ class DatabaseHelper {
           final properties = feature['properties'];
           Projeto? projeto = await txn.query('projetos', where: 'nome = ?', whereArgs: [properties['projeto_nome']]).then((list) => list.isEmpty ? null : Projeto.fromMap(list.first));
           if (projeto == null) {
-            projeto = Projeto(nome: properties['projeto_nome'], empresa: properties['projeto_empresa'], responsavel: properties['projeto_responsavel'], dataCriacao: DateTime.now());
+            projeto = Projeto(nome: properties['projeto_nome'], empresa: properties['empresa'], responsavel: properties['responsavel'], dataCriacao: DateTime.now());
             final projetoId = await txn.insert('projetos', projeto.toMap());
             projeto = projeto.copyWith(id: projetoId);
             projetosCriados++;
@@ -762,7 +767,7 @@ class DatabaseHelper {
           }
           Fazenda? fazenda = await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [properties['fazenda_id'], atividade.id]).then((list) => list.isEmpty ? null : Fazenda.fromMap(list.first));
           if (fazenda == null) {
-            fazenda = Fazenda(id: properties['fazenda_id'], atividadeId: atividade.id!, nome: properties['fazenda_nome'], municipio: properties['fazenda_municipio'], estado: properties['fazenda_estado']);
+            fazenda = Fazenda(id: properties['fazenda_id'], atividadeId: atividade.id!, nome: properties['fazenda_nome'], municipio: properties['municipio'], estado: properties['estado']);
             await txn.insert('fazendas', fazenda.toMap());
             fazendasCriadas++;
           }
@@ -772,10 +777,10 @@ class DatabaseHelper {
               fazendaId: fazenda.id, 
               fazendaAtividadeId: fazenda.atividadeId, 
               nome: properties['talhao_nome'], 
-              especie: properties['talhao_especie'], 
-              areaHa: properties['talhao_area_ha'], 
-              idadeAnos: properties['talhao_idade_anos'],
-              espacamento: properties['parcela_espacamento'],
+              especie: properties['especie'], 
+              areaHa: properties['area_ha'], 
+              idadeAnos: properties['idade_anos'],
+              espacamento: properties['espacam'],
             );
             final talhaoId = await txn.insert('talhoes', talhao.toMap());
             talhao = talhao.copyWith(id: talhaoId);
@@ -787,11 +792,11 @@ class DatabaseHelper {
             parcela = Parcela(
               talhaoId: talhao.id!,
               idParcela: properties['parcela_id_plano'],
-              areaMetrosQuadrados: properties['parcela_area_m2'] ?? 0.0,
+              areaMetrosQuadrados: properties['area_m2'] ?? 0.0,
               status: StatusParcela.pendente,
               dataColeta: DateTime.now(),
-              latitude: geometry != null ? geometry['coordinates'][1] : null,
-              longitude: geometry != null ? geometry['coordinates'][0] : null,
+              latitude: geometry != null ? geometry['coordinates'][0][0][1] : null,
+              longitude: geometry != null ? geometry['coordinates'][0][0][0] : null,
               nomeFazenda: fazenda.nome,
               nomeTalhao: talhao.nome,
             );

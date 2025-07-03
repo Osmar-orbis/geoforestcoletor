@@ -20,6 +20,9 @@ class Atividade {
   final String tipo;
   final String descricao; // Campo para notas ou detalhes específicos
   final DateTime dataCriacao;
+  // <<< NOVO CAMPO AQUI >>>
+  // Guarda o método de cubagem ('Fixas' ou 'Relativas') se a atividade for de cubagem.
+  final String? metodoCubagem;
 
   Atividade({
     this.id,
@@ -27,15 +30,16 @@ class Atividade {
     required this.tipo,
     required this.descricao,
     required this.dataCriacao,
+    this.metodoCubagem, // <<< ADICIONADO AO CONSTRUTOR
   });
 
-  // >>> MÉTODO ADICIONADO AQUI <<<
   Atividade copyWith({
     int? id,
     int? projetoId,
     String? tipo,
     String? descricao,
     DateTime? dataCriacao,
+    String? metodoCubagem, // <<< ADICIONADO AO COPYWITH
   }) {
     return Atividade(
       id: id ?? this.id,
@@ -43,6 +47,7 @@ class Atividade {
       tipo: tipo ?? this.tipo,
       descricao: descricao ?? this.descricao,
       dataCriacao: dataCriacao ?? this.dataCriacao,
+      metodoCubagem: metodoCubagem ?? this.metodoCubagem, // <<< ADICIONADO AQUI
     );
   }
 
@@ -51,9 +56,10 @@ class Atividade {
     return {
       'id': id,
       'projetoId': projetoId,
-      'tipo': tipo, // Salva o nome do enum (ex: "ipc")
+      'tipo': tipo,
       'descricao': descricao,
       'dataCriacao': dataCriacao.toIso8601String(),
+      'metodoCubagem': metodoCubagem, // <<< ADICIONADO AO MAP
     };
   }
 
@@ -64,6 +70,7 @@ class Atividade {
       tipo: map['tipo'],
       descricao: map['descricao'],
       dataCriacao: DateTime.parse(map['dataCriacao']),
+      metodoCubagem: map['metodoCubagem'], // <<< ADICIONADO AO FACTORY
     );
   }
 }

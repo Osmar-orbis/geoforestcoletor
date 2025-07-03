@@ -1,7 +1,7 @@
 // lib/services/analysis_service.dart
 
 import 'dart:math';
-import 'package:flutter/foundation.dart'; // <<< ADICIONADO PARA O DEBUGPRINT
+import 'package:flutter/foundation.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
@@ -48,6 +48,8 @@ class AnalysisService {
     final double volumeTotalAmostrado = arvoresVivas.map((a) => _estimateVolume(a.cap, a.altura ?? mediaAltura)).reduce((a, b) => a + b);
     final double volumePorHectare = volumeTotalAmostrado / areaAmostradaHa;
     
+    // <<< CORREÇÃO APLICADA AQUI >>>
+    // A variável se chama 'areaAmostradaHa', e não 'areaTotalAmostradaHa' neste escopo.
     final int arvoresPorHectare = (arvoresVivas.length / areaAmostradaHa).round();
 
     List<String> warnings = [];
@@ -319,6 +321,7 @@ class AnalysisService {
         tipo: 'Cubagem - $metodoCubagem',
         descricao: 'Plano para o talhão ${talhao.nome} com $totalArvoresParaCubar árvores.',
         dataCriacao: DateTime.now(),
+        metodoCubagem: metodoCubagem,
       );
 
       final List<CubagemArvore> placeholders = [];

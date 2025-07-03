@@ -1,4 +1,4 @@
-// lib/pages/talhoes/detalhes_talhao_page.dart (VERSÃO COM NAVEGAÇÃO BLINDADA)
+// lib/pages/talhoes/detalhes_talhao_page.dart
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
@@ -57,32 +57,23 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
     }
   }
 
-  // =========================================================================
-  // <<< CORREÇÃO APLICADA AQUI >>>
-  // Garantimos que o objeto Talhão está completo antes de navegar.
-  // =========================================================================
   Future<void> _navegarParaNovaParcela() async {
-    // Busca a versão mais atualizada e completa do talhão no banco
     final talhoesDaFazenda = await dbHelper.getTalhoesDaFazenda(widget.talhao.fazendaId, widget.talhao.fazendaAtividadeId);
     final talhaoCompleto = talhoesDaFazenda.firstWhere(
       (t) => t.id == widget.talhao.id,
-      // Fallback, caso algo dê muito errado, usa o objeto atual
       orElse: () => widget.talhao,
     );
 
-    // Navega para a página de coleta passando o objeto completo
     final bool? recarregar = await Navigator.push(
       context,
       MaterialPageRoute(
           builder: (context) => ColetaDadosPage(talhao: talhaoCompleto)),
     );
 
-    // Se a tela de coleta retornar 'true', recarrega a lista de parcelas
     if (recarregar == true && mounted) {
       _carregarDados();
     }
   }
-  // =========================================================================
 
   Future<void> _navegarParaNovaCubagem() async {
     final String? metodoEscolhido = await showDialog<String>(
@@ -126,7 +117,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       identificador: 'Cubagem Avulsa',
     );
 
-    final recarregar = await Navigator.push(
+    final resultado = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CubagemDadosPage(
@@ -136,7 +127,7 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
       ),
     );
 
-    if (recarregar != null && recarregar as bool && mounted) {
+    if (resultado != null && mounted) {
       _carregarDados();
     }
   }
@@ -154,22 +145,27 @@ class _DetalhesTalhaoPageState extends State<DetalhesTalhaoPage> {
   }
   
   Future<void> _navegarParaDetalhesCubagem(CubagemArvore arvore) async {
-    final recarregar = await Navigator.push(
+    // =======================================================
+    // <<< CORREÇÃO PRINCIPAL APLICADA AQUI >>>
+    // O método de cubagem ('Fixas' ou 'Relativas') vem do objeto Atividade.
+    // Usamos um fallback para 'Fixas' caso a atividade não tenha o método definido (versões antigas do DB).
+    // =======================================================
+    final metodoCorreto = widget.atividade.metodoCubagem ?? 'Fixas';
+
+    final resultado = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CubagemDadosPage(
-          metodo: arvore.tipoMedidaCAP,
+          metodo: metodoCorreto, // Passa o método correto da atividade
           arvoreParaEditar: arvore,
         ),
       ),
     );
-    if (recarregar != null && recarregar is bool && recarregar && mounted) {
+
+    if (resultado != null && mounted) {
       _carregarDados();
     }
   }
-
-  // --- O resto do arquivo (build, delete, etc.) permanece exatamente o mesmo ---
-  // ... (cole o restante do seu arquivo original aqui, sem nenhuma alteração)
   
   void _toggleSelectionMode(int? itemId) {
     setState(() {

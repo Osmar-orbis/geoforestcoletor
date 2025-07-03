@@ -1,4 +1,4 @@
-// lib/pages/amostra/inventario_page.dart (VERSÃO FINAL E CORRETA)
+// lib/pages/amostra/inventario_page.dart (VERSÃO CORRIGIDA E COMPLETA)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
@@ -30,7 +30,6 @@ class _InventarioPageState extends State<InventarioPage> {
   bool _mostrandoApenasDominantes = false;
   bool _listaInvertida = false;
   
-  // <<< ESTADO QUE CONTROLA O MODO DE VISUALIZAÇÃO >>>
   bool _isReadOnly = false;
 
   @override
@@ -40,15 +39,11 @@ class _InventarioPageState extends State<InventarioPage> {
     _dataLoadingFuture = _carregarDadosIniciais();
   }
 
-  // <<< LÓGICA DE CARREGAMENTO CORRIGIDA >>>
   Future<bool> _carregarDadosIniciais() async {
-    // Apenas lê o status da parcela, NUNCA o altera ao carregar.
     if (_parcelaAtual.status == StatusParcela.concluida) {
       _isReadOnly = true;
     } else {
       _isReadOnly = false;
-      // Garante que, se não estiver concluída, o status seja "Em Andamento".
-      // Isso é seguro, pois a ColetaDadosPage já lida com o estado "concluído".
       if (_parcelaAtual.status != StatusParcela.emAndamento) {
         _parcelaAtual.status = StatusParcela.emAndamento;
         await dbHelper.updateParcelaStatus(_parcelaAtual.dbId!, StatusParcela.emAndamento);
@@ -62,7 +57,6 @@ class _InventarioPageState extends State<InventarioPage> {
     return true;
   }
   
-  // <<< NOVA FUNÇÃO PARA REABRIR A PARCELA DE FORMA INTENCIONAL >>>
   Future<void> _reabrirParaEdicao() async {
     setState(() => _isSaving = true);
     try {
@@ -117,7 +111,7 @@ class _InventarioPageState extends State<InventarioPage> {
     try {
       if (concluir) {
         _parcelaAtual.status = StatusParcela.concluida;
-        setState(() => _isReadOnly = true); // Bloqueia a tela após concluir
+        setState(() => _isReadOnly = true);
         _identificarArvoresDominantes();
       }
       _arvoresColetadas.sort((a, b) {
@@ -137,8 +131,6 @@ class _InventarioPageState extends State<InventarioPage> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
-
-  // --- O restante do arquivo (funções de navegação, deleção, diálogo, build, etc.) permanece o mesmo, mas com as devidas verificações do `_isReadOnly` ---
 
   void _navegarParaDashboard() {
     if (_parcelaAtual.dbId == null) return;
@@ -216,13 +208,16 @@ class _InventarioPageState extends State<InventarioPage> {
       }
     });
 
-    await _salvarEstadoAtual(showSnackbar: !(result.atualizarEProximo || result.irParaProxima));
+    await _salvarEstadoAtual(showSnackbar: !(result.irParaProxima || result.continuarNaMesmaPosicao || result.atualizarEProximo || result.atualizarEAnterior));
 
     if (result.irParaProxima) {
       Future.delayed(const Duration(milliseconds: 50), () => _adicionarNovaArvore());
-    } else if (result.continuarNaMesmaPosicao) {
+    } 
+    // <<< BLOCO RESTAURADO: Fuste Adicional >>>
+    else if (result.continuarNaMesmaPosicao) {
       Future.delayed(const Duration(milliseconds: 50), () => _adicionarNovaArvore(isFusteAdicional: true));
-    } else if (result.atualizarEProximo && indexOriginal != null) {
+    } 
+    else if (result.atualizarEProximo && indexOriginal != null) {
       _arvoresColetadas.sort((a, b) {
         int compLinha = a.linha.compareTo(b.linha);
         if (compLinha != 0) return compLinha;
@@ -233,6 +228,20 @@ class _InventarioPageState extends State<InventarioPage> {
       final int novoIndex = _arvoresColetadas.indexOf(result.arvore);
       if (novoIndex + 1 < _arvoresColetadas.length) {
         Future.delayed(const Duration(milliseconds: 100), () => _abrirFormularioParaEditar(_arvoresColetadas[novoIndex + 1]));
+      }
+    } 
+    // <<< NOVO BLOCO: Atualizar e Anterior >>>
+    else if (result.atualizarEAnterior && indexOriginal != null) {
+      _arvoresColetadas.sort((a, b) {
+        int compLinha = a.linha.compareTo(b.linha);
+        if (compLinha != 0) return compLinha;
+        int compPos = a.posicaoNaLinha.compareTo(b.posicaoNaLinha);
+        if (compPos != 0) return compPos;
+        return (a.id ?? 0).compareTo(b.id ?? 0);
+      });
+      final int novoIndex = _arvoresColetadas.indexOf(result.arvore);
+      if (novoIndex > 0) {
+        Future.delayed(const Duration(milliseconds: 100), () => _abrirFormularioParaEditar(_arvoresColetadas[novoIndex - 1]));
       }
     }
   }
@@ -382,9 +391,8 @@ class _InventarioPageState extends State<InventarioPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Coleta da Parcela'),
-        // <<< APPBAR DINÂMICA BASEADA NO ESTADO READONLY >>>
         actions: _isReadOnly 
-          ? [ // Ações para o modo de visualização
+          ? [
               IconButton(
                 icon: const Icon(Icons.edit_outlined),
                 tooltip: 'Reabrir para Edição',
@@ -396,7 +404,7 @@ class _InventarioPageState extends State<InventarioPage> {
                 onPressed: _arvoresColetadas.isEmpty ? null : _navegarParaDashboard,
               ),
             ]
-          : [ // Ações para o modo de edição
+          : [
               if (_isSaving)
                 const Padding(padding: EdgeInsets.only(right: 16.0), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))))
               else ...[
@@ -444,31 +452,26 @@ class _InventarioPageState extends State<InventarioPage> {
                 ),
               _buildSummaryCard(),
               
-              // =======================================================
-    // <<< COLE O CÓDIGO DO BOTÃO EXATAMENTE AQUI >>>
-    // =======================================================
-    if (!_isReadOnly) // Só mostra o botão se não estiver em modo de leitura
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
-        child: SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              // Se o filtro não está ativo, primeiro calcula as dominantes
-              if (!_mostrandoApenasDominantes) {
-                _identificarArvoresDominantes();
-              }
-              // Depois, alterna o estado do filtro para mostrar/ocultar
-              setState(() => _mostrandoApenasDominantes = !_mostrandoApenasDominantes);
-            },
-            icon: Icon(_mostrandoApenasDominantes ? Icons.filter_list_off : Icons.filter_list),
-            label: Text(_mostrandoApenasDominantes ? 'Mostrar Todas' : 'Encontrar e Filtrar Dominantes'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-          ),
-        ),
-      ),
+              if (!_isReadOnly)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        if (!_mostrandoApenasDominantes) {
+                          _identificarArvoresDominantes();
+                        }
+                        setState(() => _mostrandoApenasDominantes = !_mostrandoApenasDominantes);
+                      },
+                      icon: Icon(_mostrandoApenasDominantes ? Icons.filter_list_off : Icons.filter_list),
+                      label: Text(_mostrandoApenasDominantes ? 'Mostrar Todas' : 'Encontrar e Filtrar Dominantes'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ),
               _buildHeaderRow(),
               Expanded(
                 child: _arvoresColetadas.isEmpty
@@ -481,7 +484,6 @@ class _InventarioPageState extends State<InventarioPage> {
                           final arvore = listaExibida[index];
                           return Slidable(
                             key: ValueKey(arvore.id ?? arvore.hashCode),
-                            // <<< DESABILITA EDIÇÃO EM MODO READONLY >>>
                             endActionPane: _isReadOnly ? null : ActionPane(
                               motion: const StretchMotion(),
                               extentRatio: 0.25,
@@ -527,7 +529,6 @@ class _InventarioPageState extends State<InventarioPage> {
           );
         },
       ),
-      // <<< ESCONDE O FAB EM MODO READONLY >>>
       floatingActionButton: _isReadOnly ? null : FloatingActionButton.extended(
         onPressed: () => _adicionarNovaArvore(),
         tooltip: 'Adicionar Árvore',
