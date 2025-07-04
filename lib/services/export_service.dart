@@ -1,11 +1,11 @@
-// lib/services/export_service.dart
+// lib/services/export_service.dart (VERSÃO 100% COMPLETA E CORRIGIDA)
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart'; // Import mantido para exportProjectAsGeoJson
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/analise_result_model.dart';
 import 'package:geoforestcoletor/models/arvore_model.dart';
@@ -269,11 +269,8 @@ class ExportService {
     }
   }
 
-  // ====================================================================
-  // <<< MÉTODO ATUALIZADO CONFORME SUA SOLICITAÇÃO >>>
-  // Exporta um .json com a estrutura de polígono.
-  // ====================================================================
-  Future<void> exportarPlanoDeAmostragem({ // Nome alterado para refletir a mudança
+  // <<< ESTA É A FUNÇÃO CORRIGIDA >>>
+  Future<void> exportarPlanoDeAmostragem({
     required BuildContext context,
     required List<int> parcelaIds,
   }) async {
@@ -286,7 +283,7 @@ class ExportService {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preparando plano para exportação...')));
-    
+
     final dbHelper = DatabaseHelper.instance;
     final List<Map<String, dynamic>> features = [];
     String nomeProjeto = 'Plano';
@@ -294,7 +291,7 @@ class ExportService {
     try {
       final db = await dbHelper.database;
       final String whereClause = 'P.id IN (${List.filled(parcelaIds.length, '?').join(',')})';
-      
+
       final List<Map<String, dynamic>> results = await db.rawQuery('''
         SELECT 
           P.*,
@@ -308,22 +305,23 @@ class ExportService {
         LEFT JOIN projetos PROJ ON A.projetoId = PROJ.id
         WHERE $whereClause
       ''', parcelaIds);
-      
+
       if (results.isEmpty) {
-        if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao buscar dados das parcelas.')));
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao buscar dados das parcelas.')));
         return;
       }
-      
+
       nomeProjeto = results.first['projeto_nome'] ?? 'Plano_Sem_Nome';
 
       for (final row in results) {
-        if (row['latitude'] != null) {
+        if (row['latitude'] != null && row['longitude'] != null) {
           features.add({
             'type': 'Feature',
             'geometry': {
-              'type': 'Polygon',
+              'type': 'Point', // Corrigido de 'Polygon' para 'Point'
               'coordinates': [
-                _createBoundingBox(row['longitude'], row['latitude'])
+                row['longitude'],
+                row['latitude']
               ]
             },
             'properties': {
@@ -336,7 +334,6 @@ class ExportService {
               'empresa': row['empresa'],
               'municipio': row['municipio'],
               'area_m2': row['areaMetrosQuadrados'],
-              // Adicionando campos extras que podem ser úteis
               'projeto_nome': row['projeto_nome'],
               'responsavel': row['responsavel'],
               'fazenda_id': row['fazenda_id'],
@@ -352,11 +349,11 @@ class ExportService {
       };
 
       const jsonEncoder = JsonEncoder.withIndent('  ');
-      final jsonString = jsonEncoder.convert(geoJson); // Mudou para jsonString
+      final jsonString = jsonEncoder.convert(geoJson);
 
       final directory = await getApplicationDocumentsDirectory();
       final hoje = DateTime.now();
-      // >>> AQUI A MUDANÇA PRINCIPAL: .json em vez de .geojson
+
       final fName = 'Plano_Amostragem_${nomeProjeto.replaceAll(' ', '_')}_${DateFormat('yyyyMMdd_HHmm').format(hoje)}.json';
       final path = '${directory.path}/$fName';
 
@@ -364,11 +361,13 @@ class ExportService {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).removeCurrentSnackBar();
-        await Share.shareXFiles([XFile(path)], subject: 'Plano de Amostragem GeoForest');
+        await Share.shareXFiles(
+          [XFile(path, name: fName)], // Passa o nome explícito para o XFile
+          subject: 'Plano de Amostragem GeoForest',
+        );
       }
-
     } catch (e, s) {
-       debugPrint('Erro na exportação do plano de amostragem: $e\n$s');
+      debugPrint('Erro na exportação do plano de amostragem: $e\n$s');
       if (context.mounted) {
         ScaffoldMessenger.of(context).removeCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -377,22 +376,6 @@ class ExportService {
       }
     }
   }
-
-  // Helper function adicionado para a nova lógica de exportação do plano
-  List<List<double>> _createBoundingBox(double lon, double lat) {
-    const offset = 0.00001; // Pequeno deslocamento
-    return [
-      [lon - offset, lat - offset],
-      [lon + offset, lat - offset],
-      [lon + offset, lat + offset],
-      [lon - offset, lat + offset],
-      [lon - offset, lat - offset]
-    ];
-  }
-
-  // ====================================================================
-  // <<< FUNÇÕES DO PRIMEIRO ARQUIVO QUE FORAM MANTIDAS >>>
-  // ====================================================================
 
   Future<void> exportProjectAsGeoJson({
     required BuildContext context,
@@ -577,7 +560,7 @@ class ExportService {
       }
     }
   }
-
+  
   Future<void> exportarTudoComoZip({
     required BuildContext context,
     required List<Talhao> talhoes,
@@ -703,7 +686,7 @@ class ExportService {
     await File(outputPath)
         .writeAsString(const ListToCsvConverter().convert(rows));
   }
-
+  
   Future<void> exportarAnalisesPdf({
     required BuildContext context,
     required List<Talhao> talhoes,

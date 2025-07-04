@@ -1,4 +1,4 @@
-// lib/providers/map_provider.dart (VERSÃO COMPLETA E FINAL)
+// lib/providers/map_provider.dart (VERSÃO COM CAPTURA DE ERRO)
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/fazenda_model.dart';
+import 'package:geoforestcoletor/models/imported_feature_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/sample_point.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
@@ -132,39 +133,48 @@ class MapProvider with ChangeNotifier {
     _currentAtividade = atividade;
   }
   
-  // Função que decide qual tipo de importação fazer (pontos ou polígonos)
+  // <<< FUNÇÃO PRINCIPAL MODIFICADA PARA CAPTURAR ERROS >>>
   Future<String> processarImportacaoDeArquivo({required bool isPlanoDeAmostragem}) async {
     if (_currentAtividade == null) {
       return "Erro: Nenhuma atividade selecionada para o planejamento.";
     }
     _setLoading(true);
 
-    if (isPlanoDeAmostragem) {
-      // Importa PONTOS (plano de coleta)
-      final pontosImportados = await _geoJsonService.importPoints();
-      if (pontosImportados.isNotEmpty) {
-        final message = await _processarPlanoDeAmostragemImportado(pontosImportados);
-         _setLoading(false);
-        return message;
+    try {
+      if (isPlanoDeAmostragem) {
+        final pontosImportados = await _geoJsonService.importPoints();
+        if (pontosImportados.isNotEmpty) {
+          return await _processarPlanoDeAmostragemImportado(pontosImportados);
+        }
+      } else {
+        final poligonosImportados = await _geoJsonService.importPolygons();
+        if (poligonosImportados.isNotEmpty) {
+          return await _processarCargaDeTalhoesImportada(poligonosImportados);
+        }
       }
-    } else {
-      // Importa POLÍGONOS (carga de talhões)
-      final poligonosImportados = await _geoJsonService.importPolygons();
-      if (poligonosImportados.isNotEmpty) {
-        final message = await _processarCargaDeTalhoesImportada(poligonosImportados);
-        _setLoading(false);
-        return message;
-      }
-    }
+      
+      // Se chegou aqui, o seletor de arquivo foi cancelado ou o arquivo estava vazio.
+      return "Nenhum dado válido foi encontrado no arquivo selecionado.";
     
-    _setLoading(false);
-    return "Nenhum dado válido foi encontrado no arquivo selecionado.";
+    } on GeoJsonParseException catch (e) {
+      // Captura o erro específico do nosso serviço e retorna a mensagem detalhada.
+      return e.toString();
+    } catch (e) {
+      // Captura qualquer outro erro inesperado.
+      return 'Ocorreu um erro inesperado: ${e.toString()}';
+    } finally {
+      // Garante que o loading sempre seja desativado.
+      _setLoading(false);
+    }
   }
 
-  // Processa a importação de polígonos (Carga de Talhões)
+
+  // O restante do arquivo continua igual...
+  // ... (Cole o resto do seu código do MapProvider aqui, sem alterações)
+  
   Future<String> _processarCargaDeTalhoesImportada(List<ImportedPolygonFeature> features) async {
-    _importedPolygons = []; // Limpa polígonos antigos
-    _samplePoints = []; // Limpa pontos antigos
+    _importedPolygons = []; 
+    _samplePoints = []; 
     notifyListeners();
 
     int fazendasCriadas = 0;
@@ -178,7 +188,6 @@ class MapProvider with ChangeNotifier {
         
         if (fazendaId == null || nomeTalhao == null) continue;
 
-        // Verifica/cria a fazenda
         Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [fazendaId, _currentAtividade!.id!])).map((e) => Fazenda.fromMap(e)).firstOrNull;
         if (fazenda == null) {
           fazenda = Fazenda(id: fazendaId, atividadeId: _currentAtividade!.id!, nome: props['fazenda_nome']?.toString() ?? fazendaId, municipio: 'N/I', estado: 'N/I');
@@ -186,7 +195,6 @@ class MapProvider with ChangeNotifier {
           fazendasCriadas++;
         }
         
-        // Verifica/cria o talhão
         Talhao? talhao = (await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [nomeTalhao, fazenda.id, fazenda.atividadeId])).map((e) => Talhao.fromMap(e)).firstOrNull;
         if (talhao == null) {
           talhao = Talhao(
@@ -198,7 +206,6 @@ class MapProvider with ChangeNotifier {
           talhoesCriados++;
         }
         
-        // Adiciona dados ao polígono para uso posterior
         feature.properties['db_talhao_id'] = talhao.id;
         feature.properties['db_fazenda_nome'] = fazenda.nome;
       }
@@ -209,10 +216,9 @@ class MapProvider with ChangeNotifier {
     return "Carga concluída: ${features.length} polígonos, $fazendasCriadas novas fazendas e $talhoesCriados novos talhões criados.";
   }
 
-  // Processa a importação de pontos (Plano de Amostragem)
   Future<String> _processarPlanoDeAmostragemImportado(List<ImportedPointFeature> pontosImportados) async {
-    _importedPolygons = []; // Limpa polígonos
-    _samplePoints = []; // Limpa pontos
+    _importedPolygons = []; 
+    _samplePoints = []; 
     notifyListeners();
 
     final db = await _dbHelper.database;
@@ -228,7 +234,6 @@ class MapProvider with ChangeNotifier {
         
         if (fazendaId == null || nomeTalhao == null) continue;
 
-        // Garante que a FAZENDA existe
         Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [fazendaId, _currentAtividade!.id!])).map((e) => Fazenda.fromMap(e)).firstOrNull;
         if (fazenda == null) {
           fazenda = Fazenda(id: fazendaId, atividadeId: _currentAtividade!.id!, nome: props['fazenda']?.toString() ?? fazendaId, municipio: 'N/I', estado: 'N/I');
@@ -236,7 +241,6 @@ class MapProvider with ChangeNotifier {
           novasFazendas++;
         }
 
-        // Garante que o TALHÃO existe
         Talhao? talhao = (await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [nomeTalhao, fazenda.id, fazenda.atividadeId])).map((e) => Talhao.fromMap(e)).firstOrNull;
         if (talhao == null) {
           talhao = Talhao(
@@ -249,7 +253,6 @@ class MapProvider with ChangeNotifier {
           novosTalhoes++;
         }
         
-        // Cria a PARCELA para salvar
         parcelasParaSalvar.add(Parcela(
           talhaoId: talhao.id,
           idParcela: props['parcela_id_plano']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),

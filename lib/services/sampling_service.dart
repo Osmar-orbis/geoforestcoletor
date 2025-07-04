@@ -1,9 +1,11 @@
-// lib/services/sampling_service.dart (VERSÃO FINAL COM IMPORT CORRETO)
+// lib/services/sampling_service.dart (VERSÃO CORRIGIDA)
 
 import 'dart:math';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:geoforestcoletor/services/geojson_service.dart'; // <<< IMPORT ADICIONADO AQUI
+
+// <<< 1. IMPORTA O NOVO MODELO CENTRALIZADO EM VEZ DO 'geojson_service' >>>
+import 'package:geoforestcoletor/models/imported_feature_model.dart';
 
 // Classe auxiliar para transportar o ponto gerado e as propriedades do talhão.
 class GeneratedPoint {

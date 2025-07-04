@@ -1,54 +1,58 @@
-// lib/services/geojson_service.dart (VERSÃO FINAL COM IMPORT CORRETO)
+// lib/services/geojson_service.dart (VERSÃO COMPLETA E CORRIGIDA)
 
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart'; // <<< IMPORT ADICIONADO AQUI
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart'; // Import necessário para TextStyle
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:geoforestcoletor/models/imported_feature_model.dart';
 
-// Modelo para polígonos importados
-class ImportedPolygonFeature {
-  final Polygon polygon;
-  final Map<String, dynamic> properties;
+// Classe de exceção personalizada para nos dar erros claros.
+class GeoJsonParseException implements Exception {
+  final String message;
+  GeoJsonParseException(this.message);
 
-  ImportedPolygonFeature({required this.polygon, required this.properties});
+  @override
+  String toString() => message;
 }
-
-// Modelo para pontos importados
-class ImportedPointFeature {
-  final LatLng position;
-  final Map<String, dynamic> properties;
-
-  ImportedPointFeature({required this.position, required this.properties});
-}
-
 
 class GeoJsonService {
-  Future<File?> _pickFile() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.photos, Permission.videos, Permission.audio, Permission.storage,
-    ].request();
 
-    if (!statuses.values.any((s) => s.isGranted)) {
-       debugPrint("Permissões de armazenamento/mídia negadas.");
-       return null;
+  // Função para selecionar o arquivo, agora com permissões robustas.
+  Future<File?> _pickFile() async {
+    if (Platform.isAndroid) {
+      // Para Android 11+, precisamos da permissão para gerenciar todos os arquivos.
+      var status = await Permission.manageExternalStorage.status;
+      if (!status.isGranted) {
+        status = await Permission.manageExternalStorage.request();
+      }
+      if (!status.isGranted) {
+        // Se a permissão for negada, lançamos um erro claro.
+        throw GeoJsonParseException("Permissão de acesso aos arquivos foi negada. Por favor, conceda a permissão nas configurações do aplicativo.");
+      }
     }
 
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['geojson', 'json'],
-    );
+    // Usar FileType.any é mais confiável para evitar problemas com tipos customizados.
+    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
 
     if (result == null || result.files.single.path == null) {
       debugPrint("Nenhum arquivo selecionado.");
       return null;
     }
-    return File(result.files.single.path!);
+    
+    // Validação da extensão para garantir que o usuário selecionou o tipo correto.
+    final filePath = result.files.single.path!;
+    if (!filePath.toLowerCase().endsWith('.json') && !filePath.toLowerCase().endsWith('.geojson')) {
+        throw GeoJsonParseException("Arquivo inválido. Por favor, selecione um arquivo .json ou .geojson.");
+    }
+
+    return File(filePath);
   }
 
-  // Novo método específico para importar polígonos
+  // Função para importar POLÍGONOS.
   Future<List<ImportedPolygonFeature>> importPolygons() async {
     final file = await _pickFile();
     if (file == null) return [];
@@ -58,7 +62,9 @@ class GeoJsonService {
       if (fileContent.isEmpty) return [];
       
       final geoJsonData = json.decode(fileContent);
-      if (geoJsonData['features'] == null) return [];
+      if (geoJsonData['features'] == null) {
+          throw GeoJsonParseException("O arquivo não contém a chave 'features', verifique se é um GeoJSON válido.");
+      }
 
       final List<ImportedPolygonFeature> importedPolygons = [];
 
@@ -70,8 +76,11 @@ class GeoJsonService {
           
           void processPolygonCoordinates(List polygonCoords) {
               final List<LatLng> points = [];
-              for (var point in polygonCoords[0]) { // Acessa a primeira lista que contém os pontos
-                points.add(LatLng(point[1].toDouble(), point[0].toDouble()));
+              // Acessa o primeiro anel de coordenadas do polígono.
+              for (var point in polygonCoords[0]) {
+                if (point is List && point.length >= 2) {
+                    points.add(LatLng(point[1].toDouble(), point[0].toDouble()));
+                }
               }
               if (points.isNotEmpty) {
                 importedPolygons.add(
@@ -93,13 +102,14 @@ class GeoJsonService {
         }
       }
       return importedPolygons;
-    } catch (e, s) {
-      debugPrint("ERRO ao importar polígonos GeoJSON: $e\nStacktrace: $s");
-      return [];
+    } catch (e) {
+      // Lança a exceção com detalhes, em vez de falhar silenciosamente.
+      debugPrint("ERRO ao importar polígonos GeoJSON: $e");
+      throw GeoJsonParseException('Falha ao processar o arquivo. Verifique o formato do GeoJSON. Detalhe: ${e.toString()}');
     }
   }
   
-  // Novo método específico para importar pontos
+  // Função para importar PONTOS.
   Future<List<ImportedPointFeature>> importPoints() async {
     final file = await _pickFile();
     if (file == null) return [];
@@ -109,7 +119,9 @@ class GeoJsonService {
       if (fileContent.isEmpty) return [];
       
       final geoJsonData = json.decode(fileContent);
-      if (geoJsonData['features'] == null) return [];
+      if (geoJsonData['features'] == null) {
+          throw GeoJsonParseException("O arquivo não contém a chave 'features', verifique se é um GeoJSON válido.");
+      }
 
       final List<ImportedPointFeature> importedPoints = [];
       for (var feature in geoJsonData['features']) {
@@ -117,18 +129,21 @@ class GeoJsonService {
         final properties = feature['properties'] as Map<String, dynamic>? ?? {};
 
         if (geometry != null && geometry['type'] == 'Point' && geometry['coordinates'] != null) {
-          final position = LatLng(geometry['coordinates'][1].toDouble(), geometry['coordinates'][0].toDouble());
-          importedPoints.add(ImportedPointFeature(position: position, properties: properties));
+           if (geometry['coordinates'] is List && geometry['coordinates'].length >= 2) {
+             final position = LatLng(geometry['coordinates'][1].toDouble(), geometry['coordinates'][0].toDouble());
+             importedPoints.add(ImportedPointFeature(position: position, properties: properties));
+           }
         }
       }
       return importedPoints;
-    } catch (e, s) {
-      debugPrint("ERRO ao importar pontos GeoJSON: $e\nStacktrace: $s");
-      return [];
+    } catch (e) {
+       // Lança a exceção com detalhes.
+      debugPrint("ERRO ao importar pontos GeoJSON: $e");
+      throw GeoJsonParseException('Falha ao processar o arquivo. Verifique o formato do GeoJSON. Detalhe: ${e.toString()}');
     }
   }
 
-  // Função auxiliar para criar polígonos (sem alteração)
+  // Função auxiliar para criar os polígonos no mapa.
   Polygon _createPolygon(List<LatLng> points, Map<String, dynamic> properties) {
     final label = (properties['talhao_nome'] ?? properties['talhao_id'] ?? properties['talhao'])?.toString();
     return Polygon(
