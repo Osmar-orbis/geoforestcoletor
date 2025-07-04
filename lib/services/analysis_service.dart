@@ -1,23 +1,197 @@
-// lib/services/analysis_service.dart
+// lib/services/analysis_service.dart (VERSÃO FINAL E COMPLETA)
 
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
+import 'package:geoforestcoletor/models/cubagem_secao_model.dart';
 import 'package:geoforestcoletor/models/enums.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/models/arvore_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/analise_result_model.dart';
+import 'package:geoforestcoletor/models/sortimento_model.dart';
+import 'package:ml_linalg/linalg.dart'; 
 
 class AnalysisService {
   static const double FATOR_DE_FORMA = 0.45;
 
-  TalhaoAnalysisResult getTalhaoInsights(List<Parcela> parcelasDoTalhao, List<Arvore> todasAsArvores) {
-    if (parcelasDoTalhao.isEmpty || todasAsArvores.isEmpty) {
-      return TalhaoAnalysisResult();
+  double calcularVolumeComercialSmalian(List<CubagemSecao> secoes) {
+    if (secoes.length < 2) return 0.0;
+    secoes.sort((a, b) => a.alturaMedicao.compareTo(b.alturaMedicao));
+    
+    double volumeTotal = 0.0;
+
+    for (int i = 0; i < secoes.length - 1; i++) {
+        final secao1 = secoes[i];
+        final secao2 = secoes[i+1];
+
+        final diametro1_m = secao1.diametroSemCasca / 100;
+        final diametro2_m = secao2.diametroSemCasca / 100;
+
+        final area1 = (pi * pow(diametro1_m, 2)) / 4;
+        final area2 = (pi * pow(diametro2_m, 2)) / 4;
+        
+        final comprimentoTora = secao2.alturaMedicao - secao1.alturaMedicao;
+
+        final volumeTora = ((area1 + area2) / 2) * comprimentoTora;
+        volumeTotal += volumeTora;
     }
+    return volumeTotal;
+  }
+
+  Future<Map<String, dynamic>> gerarEquacaoSchumacherHall(List<CubagemArvore> arvoresCubadas) async {
+    final dbHelper = DatabaseHelper.instance;
+    final List<Vector> xData = [];
+    final List<double> yData = [];
+
+    for (final arvoreCubada in arvoresCubadas) {
+      if (arvoreCubada.id == null) continue;
+
+      final secoes = await dbHelper.getSecoesPorArvoreId(arvoreCubada.id!);
+      final volumeReal = calcularVolumeComercialSmalian(secoes);
+
+      if (volumeReal <= 0 || arvoreCubada.valorCAP <= 0 || arvoreCubada.alturaTotal <= 0) {
+        continue;
+      }
+
+      final dap = arvoreCubada.valorCAP / pi;
+      final altura = arvoreCubada.alturaTotal;
+      
+      final lnVolume = log(volumeReal);
+      final lnDAP = log(dap);
+      final lnAltura = log(altura);
+
+      xData.add(Vector.fromList([1.0, lnDAP, lnAltura]));
+      yData.add(lnVolume);
+    }
+
+    if (xData.length < 3) {
+      return {'error': 'Dados insuficientes para a regressão. Pelo menos 3 árvores cubadas com dados completos são necessárias.'};
+    }
+
+    final features = Matrix.fromRows(xData);
+    final labels = Vector.fromList(yData);
+
+    final coefficients = (features.transpose() * features).inverse() * features.transpose() * labels;
+    
+    final double b0 = coefficients.elementAt(0).first;
+    final double b1 = coefficients.elementAt(1).first;
+    final double b2 = coefficients.elementAt(2).first;
+    
+    final predictedValues = features * coefficients;
+    final yMean = labels.mean();
+    final totalSumOfSquares = labels.fold(0.0, (sum, val) => sum + pow(val - yMean, 2));
+    final residualSumOfSquares = (labels - predictedValues).fold(0.0, (sum, val) => sum + pow(val, 2));
+    final rSquared = 1 - (residualSumOfSquares / totalSumOfSquares);
+
+    return {
+      'b0': b0, 'b1': b1, 'b2': b2, 'R2': rSquared,
+      'equacao': 'ln(V) = ${b0.toStringAsFixed(5)} + ${b1.toStringAsFixed(5)}*ln(DAP) + ${b2.toStringAsFixed(5)}*ln(H)',
+      'n_amostras': xData.length,
+    };
+  }
+
+  List<Arvore> aplicarEquacaoDeVolume({
+    required List<Arvore> arvoresDoInventario,
+    required double b0,
+    required double b1,
+    required double b2,
+  }) {
+    final List<Arvore> arvoresComVolume = [];
+    final List<double> alturasValidas = arvoresDoInventario.map((a) => a.altura).whereType<double>().toList();
+    final double mediaAltura = alturasValidas.isNotEmpty ? alturasValidas.reduce((a, b) => a + b) / alturasValidas.length : 0.0;
+
+    for (final arvore in arvoresDoInventario) {
+      if (arvore.cap <= 0 || arvore.codigo != Codigo.normal) {
+        arvoresComVolume.add(arvore.copyWith(volume: 0));
+        continue;
+      }
+      final alturaParaCalculo = arvore.altura ?? mediaAltura;
+      if (alturaParaCalculo <= 0) {
+        arvoresComVolume.add(arvore.copyWith(volume: 0));
+        continue;
+      }
+      final dap = arvore.cap / pi;
+      final lnVolume = b0 + (b1 * log(dap)) + (b2 * log(alturaParaCalculo));
+      final volumeEstimado = exp(lnVolume);
+      arvoresComVolume.add(arvore.copyWith(volume: volumeEstimado));
+    }
+    return arvoresComVolume;
+  }
+
+  /// Classifica o volume de uma única árvore cubada em diferentes sortimentos.
+  Map<String, double> classificarSortimentos(List<CubagemSecao> secoes, List<SortimentoModel> definicoesSortimentos) {
+    Map<String, double> volumesPorSortimento = {};
+    if (secoes.length < 2) return volumesPorSortimento;
+
+    definicoesSortimentos.sort((a, b) => b.diametroMinimo.compareTo(a.diametroMinimo));
+    secoes.sort((a, b) => a.alturaMedicao.compareTo(b.alturaMedicao));
+
+    double alturaAtual = 0.0;
+    final alturaMaxima = secoes.last.alturaMedicao;
+
+    while (alturaAtual < alturaMaxima) {
+      bool toraEncontradaNestaPassada = false;
+      for (final sortimento in definicoesSortimentos) {
+        final comprimentoTora = sortimento.comprimento;
+        final alturaFinalTora = alturaAtual + comprimentoTora;
+
+        if (alturaFinalTora > alturaMaxima) continue;
+
+        final diametroPontaFina = _interpolarDiametro(secoes, alturaFinalTora);
+
+        if (diametroPontaFina >= sortimento.diametroMinimo && diametroPontaFina <= sortimento.diametroMaximo) {
+          final diametroBase = _interpolarDiametro(secoes, alturaAtual);
+          final areaBase = (pi * pow(diametroBase / 100, 2)) / 4;
+          final areaPonta = (pi * pow(diametroPontaFina / 100, 2)) / 4;
+          final volumeDaTora = ((areaBase + areaPonta) / 2) * comprimentoTora;
+
+          volumesPorSortimento.update(sortimento.nome, (value) => value + volumeDaTora, ifAbsent: () => volumeDaTora);
+
+          alturaAtual = alturaFinalTora;
+          toraEncontradaNestaPassada = true;
+          break;
+        }
+      }
+      if (!toraEncontradaNestaPassada) {
+        alturaAtual += 0.1;
+      }
+    }
+    return volumesPorSortimento;
+  }
+
+  double _interpolarDiametro(List<CubagemSecao> secoes, double alturaAlvo) {
+    if (secoes.isEmpty) return 0.0;
+    
+    CubagemSecao secaoAnterior = secoes.first;
+    CubagemSecao secaoSeguinte = secoes.last;
+
+    for (int i = 0; i < secoes.length - 1; i++) {
+      if (secoes[i].alturaMedicao <= alturaAlvo && secoes[i + 1].alturaMedicao >= alturaAlvo) {
+        secaoAnterior = secoes[i];
+        secaoSeguinte = secoes[i + 1];
+        break;
+      }
+    }
+
+    if (secaoAnterior.alturaMedicao == secaoSeguinte.alturaMedicao) {
+      return secaoAnterior.diametroSemCasca;
+    }
+    
+    final double altura1 = secaoAnterior.alturaMedicao;
+    final double diametro1 = secaoAnterior.diametroSemCasca;
+    final double altura2 = secaoSeguinte.alturaMedicao;
+    final double diametro2 = secaoSeguinte.diametroSemCasca;
+
+    final double diametroInterpolado = diametro1 + (alturaAlvo - altura1) * (diametro2 - diametro1) / (altura2 - altura1);
+
+    return diametroInterpolado > 0 ? diametroInterpolado : 0.0;
+  }
+  
+  TalhaoAnalysisResult getTalhaoInsights(List<Parcela> parcelasDoTalhao, List<Arvore> todasAsArvores) {
+    if (parcelasDoTalhao.isEmpty) return TalhaoAnalysisResult();
     
     final double areaTotalAmostradaM2 = parcelasDoTalhao.map((p) => p.areaMetrosQuadrados).reduce((a, b) => a + b);
     if (areaTotalAmostradaM2 == 0) return TalhaoAnalysisResult();
@@ -33,7 +207,6 @@ class AnalysisService {
     }
     
     final List<Arvore> arvoresVivas = arvoresDoConjunto.where((a) => a.codigo == Codigo.normal).toList();
-
     if (arvoresVivas.isEmpty) {
       return TalhaoAnalysisResult(warnings: ["Nenhuma árvore viva encontrada nas amostras para análise."]);
     }
@@ -49,7 +222,6 @@ class AnalysisService {
     final double volumePorHectare = volumeTotalAmostrado / areaAmostradaHa;
     
     // <<< CORREÇÃO APLICADA AQUI >>>
-    // A variável se chama 'areaAmostradaHa', e não 'areaTotalAmostradaHa' neste escopo.
     final int arvoresPorHectare = (arvoresVivas.length / areaAmostradaHa).round();
 
     List<String> warnings = [];
@@ -57,7 +229,7 @@ class AnalysisService {
     List<String> recommendations = [];
     
     final int arvoresMortas = arvoresDoConjunto.length - arvoresVivas.length;
-    final double taxaMortalidade = (arvoresMortas / arvoresDoConjunto.length) * 100;
+    final double taxaMortalidade = arvoresVivas.isNotEmpty ? (arvoresMortas / arvoresDoConjunto.length) * 100 : 0.0;
     if (taxaMortalidade > 15) {
       warnings.add("Mortalidade de ${taxaMortalidade.toStringAsFixed(1)}% detectada, valor considerado alto.");
     }
@@ -87,6 +259,8 @@ class AnalysisService {
     );
   }
 
+  // ... (Restante das suas funções, como simularDesbaste, analisarRendimentoPorDAP, etc., continuam aqui)
+  
   TalhaoAnalysisResult simularDesbaste(List<Parcela> parcelasOriginais, List<Arvore> todasAsArvores, double porcentagemRemocao) {
     if (parcelasOriginais.isEmpty || porcentagemRemocao <= 0) {
       return getTalhaoInsights(parcelasOriginais, todasAsArvores);

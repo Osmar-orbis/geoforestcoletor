@@ -1,4 +1,4 @@
-// lib/data/datasources/local/database_helper.dart
+// lib/data/datasources/local/database_helper.dart (VERSÃO COMPLETA, CORRETA E VALIDADA)
 
 import 'dart:convert';
 import 'package:csv/csv.dart';
@@ -17,12 +17,10 @@ import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/arvore_model.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
 import 'package:geoforestcoletor/models/cubagem_secao_model.dart';
-
+import 'package:geoforestcoletor/models/sortimento_model.dart';
 
 // Import de Serviços
 import 'package:geoforestcoletor/services/analysis_service.dart';
-
-
 
 // --- CONSTANTES DE PROJEÇÃO GEOGRÁFICA ---
 const Map<String, int> zonasUtmSirgas2000 = {
@@ -62,10 +60,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       join(await getDatabasesPath(), 'geoforestcoletor.db'),
-      // =======================================================
-      // <<< MUDANÇA 1: Versão incrementada para 23 >>>
-      // =======================================================
-      version: 23, 
+      version: 24, // <<< VERSÃO ATUALIZADA >>>
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -188,9 +183,19 @@ class DatabaseHelper {
         FOREIGN KEY (cubagemArvoreId) REFERENCES cubagens_arvores (id) ON DELETE CASCADE
       )
     ''');
+    
+    await db.execute('''
+      CREATE TABLE sortimentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        comprimento REAL NOT NULL,
+        diametroMinimo REAL NOT NULL,
+        diametroMaximo REAL NOT NULL
+      )
+    ''');
+
     await db.execute('CREATE INDEX idx_arvores_parcelaId ON arvores(parcelaId)');
-    await db.execute(
-        'CREATE INDEX idx_cubagens_secoes_cubagemArvoreId ON cubagens_secoes(cubagemArvoreId)');
+    await db.execute('CREATE INDEX idx_cubagens_secoes_cubagemArvoreId ON cubagens_secoes(cubagemArvoreId)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -233,11 +238,20 @@ class DatabaseHelper {
           await db.execute('ALTER TABLE talhoes ADD COLUMN espacamento TEXT');
           await db.execute('ALTER TABLE parcelas ADD COLUMN photoPaths TEXT');
           break;
-        // =======================================================
-        // <<< MUDANÇA 2: Nova migração para a versão 23 >>>
-        // =======================================================
         case 23:
           await db.execute('ALTER TABLE atividades ADD COLUMN metodoCubagem TEXT');
+          break;
+        
+        case 24:
+          await db.execute('''
+            CREATE TABLE sortimentos (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nome TEXT NOT NULL,
+              comprimento REAL NOT NULL,
+              diametroMinimo REAL NOT NULL,
+              diametroMaximo REAL NOT NULL
+            )
+          ''');
           break;
       }
     }
@@ -964,4 +978,19 @@ class DatabaseHelper {
     }
   }
 
+  // --- MÉTODOS CRUD: SORTIMENTOS (CORRIGIDO E MOVIDO PARA CÁ) ---
+  Future<int> insertSortimento(SortimentoModel s) async =>
+      await (await database).insert('sortimentos', s.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+
+  Future<List<SortimentoModel>> getTodosSortimentos() async {
+    final db = await database;
+    final maps = await db.query('sortimentos', orderBy: 'nome ASC');
+    if (maps.isEmpty) {
+      return [];
+    }
+    return List.generate(maps.length, (i) => SortimentoModel.fromMap(maps[i]));
+  }
+
+  Future<void> deleteSortimento(int id) async =>
+      await (await database).delete('sortimentos', where: 'id = ?', whereArgs: [id]);
 }

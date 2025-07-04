@@ -10,6 +10,7 @@ import 'package:geoforestcoletor/services/export_service.dart';
 import 'package:geoforestcoletor/widgets/menu_card.dart';
 import 'package:provider/provider.dart';
 
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
   final String title;

@@ -1,10 +1,12 @@
-// lib/pages/analises/analise_selecao_page.dart (VERSÃO CORRIGIDA)
+// lib/pages/analises/analise_selecao_page.dart (VERSÃO FINAL E CORRETA)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/dashboard/relatorio_comparativo_page.dart';
+import 'package:geoforestcoletor/pages/analises/analise_volumetrica_page.dart';
+import 'package:geoforestcoletor/pages/analises/definicao_sortimento_page.dart'; // <<< Import da nova página
 
 class AnaliseSelecaoPage extends StatefulWidget {
   const AnaliseSelecaoPage({super.key});
@@ -33,35 +35,18 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
   }
 
    Future<void> _carregarAtividades() async {
-    print("--- INICIANDO ANÁLISE DE DADOS ---");
-    final parcelasConcluidas = await dbHelper.getTodasAsParcelasConcluidas();
-    print("1. Total de parcelas com status 'concluida' no banco: ${parcelasConcluidas.length}");
-    
     final talhoesCompletos = await dbHelper.getTalhoesComParcelasConcluidas();
-    print("2. Talhões encontrados com parcelas concluídas: ${talhoesCompletos.length}");
-    for (var talhao in talhoesCompletos) {
-      print("   - Talhão: ${talhao.nome}, ID da Atividade: ${talhao.fazendaAtividadeId}");
-    }
-
     if (talhoesCompletos.isEmpty) {
-      print("-> NENHUM TALHÃO COM PARCELAS CONCLUÍDAS. Encerrando.");
       if(mounted) setState(() => _atividadesDisponiveis = []);
       return;
     }
-
     final atividadeIds = talhoesCompletos.map((t) => t.fazendaAtividadeId).toSet();
-    print("3. IDs das atividades que deveriam aparecer: $atividadeIds");
-    
     final todasAtividades = await dbHelper.getTodasAsAtividades();
-    print("4. Total de atividades no banco: ${todasAtividades.length}");
-
     if(mounted) {
       setState(() {
         _atividadesDisponiveis = todasAtividades.where((a) => atividadeIds.contains(a.id)).toList();
-        print("5. Atividades filtradas para exibir: ${_atividadesDisponiveis.length}");
       });
     }
-    print("--- FIM DA ANÁLISE DE DADOS ---");
   }
 
   Future<void> _onAtividadeChanged(Atividade? novaAtividade) async {
@@ -88,7 +73,6 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
 
   void _toggleFazenda(String fazendaId, bool? isSelected) {
     if (isSelected == null) return; 
-
     setState(() {
       if (isSelected) {
         _fazendasSelecionadas.add(fazendaId);
@@ -126,9 +110,7 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
       ));
       return;
     }
-
     final talhoesParaAnalisar = _talhoesDaAtividade.where((t) => _talhoesSelecionados.contains(t.id)).toList();
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -136,6 +118,21 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
           talhoesSelecionados: talhoesParaAnalisar
         ),
       ),
+    );
+  }
+  
+  void _navegarParaAnaliseVolumetrica() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AnaliseVolumetricaPage()),
+    );
+  }
+
+  // <<< NOVA FUNÇÃO DE NAVEGAÇÃO >>>
+  void _navegarParaDefinicaoSortimento() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const DefinicaoSortimentoPage()),
     );
   }
 
@@ -151,7 +148,7 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Seleção para Análise')),
+      appBar: AppBar(title: const Text('GeoForest Analista')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -159,7 +156,7 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
           children: [
             DropdownButtonFormField<Atividade>(
               value: _atividadeSelecionada,
-              hint: const Text('1. Selecione uma Atividade'),
+              hint: const Text('1. Selecione uma Atividade de Inventário'),
               isExpanded: true,
               items: _atividadesDisponiveis.map((atividade) {
                 return DropdownMenuItem(
@@ -171,7 +168,7 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
               decoration: const InputDecoration(border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
-            const Text('2. Selecione Fazendas e Talhões', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('2. Selecione Fazendas e Talhões para Análise Comparativa', style: TextStyle(fontWeight: FontWeight.bold)),
             const Divider(),
             Expanded(
               child: _isLoading
@@ -215,10 +212,34 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _gerarRelatorio,
-        icon: const Icon(Icons.analytics),
-        label: const Text('Gerar Análise'),
+      // <<< FLOATING ACTION BUTTON CORRIGIDO >>>
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: _navegarParaDefinicaoSortimento,
+            heroTag: 'definirSortimentoFab',
+            tooltip: 'Definir Sortimentos',
+            mini: true,
+            child: const Icon(Icons.rule),
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton.extended(
+            onPressed: _navegarParaAnaliseVolumetrica,
+            heroTag: 'analiseVolumetricaFab',
+            label: const Text('Equação de Volume'),
+            icon: const Icon(Icons.calculate_outlined),
+            backgroundColor: Theme.of(context).colorScheme.secondary,
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton.extended(
+            onPressed: _gerarRelatorio,
+            heroTag: 'analiseComparativaFab',
+            label: const Text('Análise Comparativa'),
+            icon: const Icon(Icons.analytics_outlined),
+          ),
+        ],
       ),
     );
   }
