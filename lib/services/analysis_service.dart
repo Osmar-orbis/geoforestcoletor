@@ -1,4 +1,4 @@
-// lib/services/analysis_service.dart (VERSÃO COM FLUXO DE DADOS CORRIGIDO)
+// lib/services/analysis_service.dart (VERSÃO COM ALGORITMO DE SORTIMENTO CORRIGIDO)
 
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -123,8 +123,7 @@ class AnalysisService {
         continue;
       }
       
-      // <<< MELHORIA: Usa a média de altura apenas se a altura individual for nula OU ZERO >>>
-      final alturaParaCalculo = (arvore.altura == null || arvore.altura == 0) ? mediaAltura : arvore.altura!;
+      final alturaParaCalculo = (arvore.altura == null || arvore.altura! <= 0) ? mediaAltura : arvore.altura!;
       if (alturaParaCalculo <= 0) {
         arvoresComVolume.add(arvore.copyWith(volume: 0));
         continue;
@@ -137,80 +136,57 @@ class AnalysisService {
     }
     return arvoresComVolume;
   }
-
+  
+  // ===================================================================
+  // <<< ALGORITMO DE SORTIMENTO CORRIGIDO >>>
+  // ===================================================================
   Map<String, double> classificarSortimentos(List<CubagemSecao> secoes) {
     Map<String, double> volumesPorSortimento = {};
     if (secoes.length < 2) return volumesPorSortimento;
 
-    List<SortimentoModel> definicoesSortimentos = _sortimentosFixos;
-
     secoes.sort((a, b) => a.alturaMedicao.compareTo(b.alturaMedicao));
 
-    double alturaAtual = 0.0;
-    final alturaMaxima = secoes.last.alturaMedicao;
+    // Itera sobre cada segmento (tora) da árvore
+    for (int i = 0; i < secoes.length - 1; i++) {
+        final secaoBase = secoes[i];
+        final secaoPonta = secoes[i+1];
+        
+        final diametroBase = secaoBase.diametroSemCasca;
+        final diametroPonta = secaoPonta.diametroSemCasca;
 
-    while (alturaAtual < alturaMaxima) {
-      bool toraEncontradaNestaPassada = false;
-      for (final sortimento in definicoesSortimentos) {
-        final comprimentoTora = sortimento.comprimento;
-        final alturaFinalTora = alturaAtual + comprimentoTora;
+        // Se a tora inteira for muito fina, pula para a próxima
+        if (diametroBase < _sortimentosFixos.last.diametroMinimo) continue;
 
-        if (alturaFinalTora > alturaMaxima) continue;
+        final comprimentoTora = secaoPonta.alturaMedicao - secaoBase.alturaMedicao;
+        
+        // Calcula o volume total da tora pelo método de Smalian
+        final areaBaseM2 = (pi * pow(diametroBase / 100, 2)) / 4;
+        final areaPontaM2 = (pi * pow(diametroPonta / 100, 2)) / 4;
+        final volumeTora = ((areaBaseM2 + areaPontaM2) / 2) * comprimentoTora;
 
-        final diametroPontaFina = _interpolarDiametro(secoes, alturaFinalTora);
-
-        if (diametroPontaFina >= sortimento.diametroMinimo && diametroPontaFina <= sortimento.diametroMaximo) {
-          final diametroBase = _interpolarDiametro(secoes, alturaAtual);
-          final areaBase = (pi * pow(diametroBase / 100, 2)) / 4;
-          final areaPonta = (pi * pow(diametroPontaFina / 100, 2)) / 4;
-          final volumeDaTora = ((areaBase + areaPonta) / 2) * comprimentoTora;
-
-          volumesPorSortimento.update(sortimento.nome, (value) => value + volumeDaTora, ifAbsent: () => volumeDaTora);
-
-          alturaAtual = alturaFinalTora;
-          toraEncontradaNestaPassada = true;
-          break;
+        // Encontra o sortimento apropriado para esta tora
+        // A verificação é feita com o diâmetro da ponta fina da tora
+        SortimentoModel? sortimentoEncontrado;
+        for (final sortimentoDef in _sortimentosFixos) {
+            if (diametroPonta >= sortimentoDef.diametroMinimo && diametroPonta < sortimentoDef.diametroMaximo) {
+                sortimentoEncontrado = sortimentoDef;
+                break;
+            }
         }
-      }
-      if (!toraEncontradaNestaPassada) {
-        alturaAtual += 0.1; 
-      }
+
+        // Se um sortimento foi encontrado, adiciona o volume da tora a ele.
+        if (sortimentoEncontrado != null) {
+            volumesPorSortimento.update(
+                sortimentoEncontrado.nome, 
+                (value) => value + volumeTora, 
+                ifAbsent: () => volumeTora
+            );
+        }
     }
     return volumesPorSortimento;
   }
 
-  double _interpolarDiametro(List<CubagemSecao> secoes, double alturaAlvo) {
-    if (secoes.isEmpty) return 0.0;
     
-    CubagemSecao secaoAnterior = secoes.first;
-    CubagemSecao secaoSeguinte = secoes.last;
-
-    for (int i = 0; i < secoes.length - 1; i++) {
-      if (secoes[i].alturaMedicao <= alturaAlvo && secoes[i + 1].alturaMedicao >= alturaAlvo) {
-        secaoAnterior = secoes[i];
-        secaoSeguinte = secoes[i + 1];
-        break;
-      }
-    }
-
-    if (secaoAnterior.alturaMedicao == secaoSeguinte.alturaMedicao) {
-      return secaoAnterior.diametroSemCasca;
-    }
-    
-    final double altura1 = secaoAnterior.alturaMedicao;
-    final double diametro1 = secaoAnterior.diametroSemCasca;
-    final double altura2 = secaoSeguinte.alturaMedicao;
-    final double diametro2 = secaoSeguinte.diametroSemCasca;
-
-    final double diametroInterpolado = diametro1 + (alturaAlvo - altura1) * (diametro2 - diametro1) / (altura2 - altura1);
-
-    return diametroInterpolado > 0 ? diametroInterpolado : 0.0;
-  }
-  
-  // ===================================================================
-  // <<< FUNÇÃO CORRIGIDA >>>
-  // Esta função agora usa a lista de árvores que recebe, sem buscar no banco.
-  // ===================================================================
   TalhaoAnalysisResult getTalhaoInsights(List<Parcela> parcelasDoTalhao, List<Arvore> todasAsArvores) {
     if (parcelasDoTalhao.isEmpty) return TalhaoAnalysisResult();
     
@@ -219,7 +195,6 @@ class AnalysisService {
     
     final double areaTotalAmostradaHa = areaTotalAmostradaM2 / 10000;
 
-    // A chamada para a função interna agora está correta
     return _analisarListaDeArvores(todasAsArvores, areaTotalAmostradaHa, parcelasDoTalhao.length);
   }
 

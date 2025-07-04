@@ -1,4 +1,4 @@
-// lib/pages/analise/simulacao_desbaste_page.dart
+// lib/pages/analises/simulacao_desbaste_page.dart (VERSÃO COM EXPORTAÇÃO FUNCIONAL)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/models/arvore_model.dart';
@@ -28,6 +28,7 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
   final _pdfService = PdfService(); // <<< 2. INSTANCIAR PDF SERVICE
   double _intensidadeDesbaste = 0.0; // Em porcentagem (0 a 40)
   late TalhaoAnalysisResult _resultadoSimulacao;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -48,8 +49,9 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
     });
   }
 
-  // <<< 3. CRIAR A FUNÇÃO DE EXPORTAÇÃO >>>
+  // <<< 3. FUNÇÃO DE EXPORTAÇÃO IMPLEMENTADA >>>
   Future<void> _exportarSimulacaoPdf() async {
+    if (_isExporting) return;
     if (widget.parcelas.isEmpty) {
        ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Não há dados para exportar.')),
@@ -57,6 +59,8 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
       return;
     }
 
+    setState(() => _isExporting = true);
+    
     // Extrai o nome da fazenda e do talhão da primeira parcela disponível
     final nomeFazenda = widget.parcelas.first.nomeFazenda ?? 'Fazenda Desconhecida';
     final nomeTalhao = widget.parcelas.first.nomeTalhao ?? 'Talhão Desconhecido';
@@ -65,14 +69,26 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
       const SnackBar(content: Text('Gerando PDF da simulação...')),
     );
 
-    await _pdfService.gerarRelatorioSimulacaoPdf(
-      context: context,
-      nomeFazenda: nomeFazenda,
-      nomeTalhao: nomeTalhao,
-      intensidade: _intensidadeDesbaste,
-      analiseInicial: widget.analiseInicial,
-      resultadoSimulacao: _resultadoSimulacao,
-    );
+    try {
+      await _pdfService.gerarRelatorioSimulacaoPdf(
+        context: context,
+        nomeFazenda: nomeFazenda,
+        nomeTalhao: nomeTalhao,
+        intensidade: _intensidadeDesbaste,
+        analiseInicial: widget.analiseInicial,
+        resultadoSimulacao: _resultadoSimulacao,
+      );
+    } catch(e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erro ao exportar: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if(mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
   }
 
   @override
@@ -80,13 +96,16 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simulador de Desbaste'),
-        // <<< 4. ADICIONAR BOTÃO DE AÇÃO NA APPBAR >>>
         actions: [
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: _exportarSimulacaoPdf,
-            tooltip: 'Exportar Simulação para PDF',
-          )
+          // <<< 4. BOTÃO DE AÇÃO NA APPBAR >>>
+          if (_isExporting)
+            const Padding(padding: EdgeInsets.all(16.0), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white,)))
+          else
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onPressed: _exportarSimulacaoPdf,
+              tooltip: 'Exportar Simulação para PDF',
+            )
         ],
       ),
       body: SingleChildScrollView(
@@ -122,16 +141,14 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
             Slider(
               value: _intensidadeDesbaste,
               min: 0,
-              max: 40, // Limite máximo de desbaste para a simulação
-              divisions: 8, // Divide o slider em 8 partes (0, 5, 10, ..., 40)
+              max: 40, 
+              divisions: 8,
               label: '${_intensidadeDesbaste.toStringAsFixed(0)}%',
               onChanged: (value) {
-                // Atualiza o estado enquanto o slider é arrastado
                 setState(() {
                   _intensidadeDesbaste = value;
                 });
               },
-              // Roda a simulação completa quando o usuário solta o slider
               onChangeEnd: (value) {
                 _rodarSimulacao(value);
               },
@@ -152,12 +169,11 @@ class _SimulacaoDesbastePageState extends State<SimulacaoDesbastePage> {
           children: [
             Text('Comparativo de Resultados', style: Theme.of(context).textTheme.titleLarge),
             const Divider(height: 20),
-            // Tabela com os resultados
             Table(
               columnWidths: const {
-                0: FlexColumnWidth(2), // Coluna do Parâmetro
-                1: FlexColumnWidth(1.2), // Coluna Antes
-                2: FlexColumnWidth(1.2), // Coluna Depois
+                0: FlexColumnWidth(2), 
+                1: FlexColumnWidth(1.2),
+                2: FlexColumnWidth(1.2),
               },
               border: TableBorder(
                 horizontalInside: BorderSide(

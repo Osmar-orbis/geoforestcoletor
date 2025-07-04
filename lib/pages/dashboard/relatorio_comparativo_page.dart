@@ -1,12 +1,14 @@
-// lib/pages/dashboard/relatorio_comparativo_page.dart
+// lib/pages/dashboard/relatorio_comparativo_page.dart (COM VERIFICAÇÃO DE ÁREA)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/dashboard/talhao_dashboard_page.dart';
+import 'package:geoforestcoletor/pages/talhoes/form_talhao_page.dart';
 import 'package:geoforestcoletor/services/pdf_service.dart';
 import 'package:geoforestcoletor/models/enums.dart';
 import 'package:geoforestcoletor/services/analysis_service.dart';
+import 'package:geoforestcoletor/services/export_service.dart';
 
 // Classe de configuração para o resultado do diálogo
 class PlanoConfig {
@@ -30,41 +32,74 @@ class RelatorioComparativoPage extends StatefulWidget {
 }
 
 class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
-  final Map<String, List<Talhao>> _talhoesPorFazenda = {};
+  late List<Talhao> _talhoesAtuais;
+  late Map<String, List<Talhao>> _talhoesPorFazenda;
   final dbHelper = DatabaseHelper.instance;
   final pdfService = PdfService();
+  final exportService = ExportService();
 
   @override
   void initState() {
     super.initState();
+    _talhoesAtuais = List.from(widget.talhoesSelecionados);
     _agruparTalhoes();
   }
 
   void _agruparTalhoes() {
-    for (var talhao in widget.talhoesSelecionados) {
+    final grouped = <String, List<Talhao>>{};
+    for (var talhao in _talhoesAtuais) {
       final fazendaNome = talhao.fazendaNome ?? 'Fazenda Desconhecida';
-      if (!_talhoesPorFazenda.containsKey(fazendaNome)) {
-        _talhoesPorFazenda[fazendaNome] = [];
+      if (!grouped.containsKey(fazendaNome)) {
+        grouped[fazendaNome] = [];
       }
-      _talhoesPorFazenda[fazendaNome]!.add(talhao);
+      grouped[fazendaNome]!.add(talhao);
     }
+    setState(() => _talhoesPorFazenda = grouped);
   }
+  
+  // <<< LÓGICA DE VERIFICAÇÃO DE ÁREA ANTES DE EXPORTAR >>>
+  Future<void> _verificarAreaEExportarPdf() async {
+    bool dadosIncompletos = _talhoesAtuais.any((t) => t.areaHa == null || t.areaHa! <= 0);
 
-  Future<void> _exportarAnaliseUnificadaPdf() async {
-    if (widget.talhoesSelecionados.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Nenhum talhão para exportar.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+    if (dadosIncompletos && mounted) {
+      final bool? querEditar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Dados Incompletos'),
+          content: const Text('Um ou mais talhões não possuem a área (ha) cadastrada. Deseja editá-los agora para um relatório mais completo?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Exportar Mesmo Assim')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Editar Agora')),
+          ],
+        ),
+      );
+
+      if (querEditar == true) {
+        for (int i = 0; i < _talhoesAtuais.length; i++) {
+          var talhao = _talhoesAtuais[i];
+          if (talhao.areaHa == null || talhao.areaHa! <= 0) {
+            final bool? foiEditado = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (context) => FormTalhaoPage(
+                fazendaId: talhao.fazendaId,
+                fazendaAtividadeId: talhao.fazendaAtividadeId,
+                talhaoParaEditar: talhao,
+              )),
+            );
+            if (foiEditado == true) {
+              // Recarrega o talhão do banco para pegar o novo valor
+              final talhaoAtualizado = await dbHelper.database.then((db) => db.query('talhoes', where: 'id = ?', whereArgs: [talhao.id]).then((maps) => Talhao.fromMap(maps.first)));
+              _talhoesAtuais[i] = talhaoAtualizado;
+            }
+          }
+        }
+        _agruparTalhoes(); // reagrupa com os dados atualizados
       }
-      return;
     }
+    
     await pdfService.gerarRelatorioUnificadoPdf(
       context: context,
-      talhoes: widget.talhoesSelecionados,
+      talhoes: _talhoesAtuais,
     );
   }
 
@@ -161,7 +196,6 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
     );
   }
   
-  // <<< FUNÇÃO PRINCIPAL MODIFICADA >>>
   Future<void> _gerarPlanosDeCubagemParaSelecionados() async {
     final PlanoConfig? config = await _mostrarDialogoDeConfiguracaoLote();
     if (config == null || !mounted) return;
@@ -174,9 +208,8 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
     
     final analysisService = AnalysisService();
     try {
-      // 1. CHAMA A FUNÇÃO E AGUARDA O RETORNO DOS PLANOS GERADOS
       final planosGerados = await analysisService.criarMultiplasAtividadesDeCubagem(
-        talhoes: widget.talhoesSelecionados,
+        talhoes: _talhoesAtuais,
         metodo: config.metodoDistribuicao,
         quantidade: config.quantidade,
         metodoCubagem: config.metodoCubagem,
@@ -198,7 +231,6 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
         backgroundColor: Colors.green,
       ));
 
-      // 2. PASSA OS PLANOS GERADOS PARA O PDF SERVICE
       await pdfService.gerarPdfUnificadoDePlanosDeCubagem(
         context: context, 
         planosPorTalhao: planosGerados,
@@ -222,8 +254,13 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
         title: const Text('Relatório Comparativo'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.share_outlined), 
+            onPressed: () => exportService.exportarTudoComoZip(context: context, talhoes: _talhoesAtuais),
+            tooltip: 'Exportar Pacote Completo (ZIP)',
+          ),
+          IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: _exportarAnaliseUnificadaPdf,
+            onPressed: _verificarAreaEExportarPdf,
             tooltip: 'Exportar Análises (PDF Unificado)',
           ),
         ],
@@ -248,6 +285,7 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
                     clipBehavior: Clip.antiAlias,
                     child: ExpansionTile(
                       title: Text('Talhão: ${talhao.nome}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle: Text(talhao.areaHa != null ? 'Área: ${talhao.areaHa} ha' : 'Área não informada'),
                       children: [TalhaoDashboardContent(talhao: talhao)],
                     ),
                   ),
@@ -257,14 +295,12 @@ class _RelatorioComparativoPageState extends State<RelatorioComparativoPage> {
           );
         },
       ),
-      // <<< BOTÃO FLUTUANTE COM O ESTILO DO BOTÃO VERMELHO >>>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _gerarPlanosDeCubagemParaSelecionados,
-        icon: const Icon(Icons.picture_as_pdf_outlined), // Ícone de PDF
+        icon: const Icon(Icons.playlist_add_check_outlined),
         label: const Text('Gerar Planos de Cubagem'),
         tooltip: 'Gerar planos de cubagem para os talhões selecionados',
-        backgroundColor: Theme.of(context).colorScheme.error, // Cor vermelha do tema
-        foregroundColor: Colors.white, // Cor do texto e ícone
+        backgroundColor: Theme.of(context).colorScheme.secondary,
       ),
     );
   }

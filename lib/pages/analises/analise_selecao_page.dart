@@ -1,4 +1,4 @@
-// lib/pages/analises/analise_selecao_page.dart (VERSÃO COM SORTIMENTOS FIXOS)
+// lib/pages/analises/analise_selecao_page.dart (VERSÃO SEM CHAMADAS MORTAS)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
@@ -6,6 +6,7 @@ import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/dashboard/relatorio_comparativo_page.dart';
 import 'package:geoforestcoletor/pages/analises/analise_volumetrica_page.dart';
+// O import da 'definicao_sortimento_page.dart' foi removido daqui.
 
 class AnaliseSelecaoPage extends StatefulWidget {
   const AnaliseSelecaoPage({super.key});
@@ -203,7 +204,7 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
           ],
         ),
       ),
-      // <<< FLOATING ACTION BUTTON ATUALIZADO (REMOVIDO O BOTÃO DE SORTIMENTO) >>>
+      // <<< FLOATING ACTION BUTTON CORRIGIDO (REMOVIDO O BOTÃO DE SORTIMENTO) >>>
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,

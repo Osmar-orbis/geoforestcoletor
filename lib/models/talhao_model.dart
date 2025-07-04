@@ -12,10 +12,13 @@ class Talhao {
   final double? areaHa;
   final double? idadeAnos;
   final String? especie;
-  final String? espacamento; // <<< NOVO CAMPO ADICIONADO AQUI
+  final String? espacamento;
 
   // Campo para exibição na UI
   final String? fazendaNome;
+  
+  // <<< NOVO CAMPO PARA CÁLCULO TEMPORÁRIO >>>
+  double? volumeTotalTalhao;
 
   Talhao({
     this.id,
@@ -25,8 +28,9 @@ class Talhao {
     this.areaHa,
     this.idadeAnos,
     this.especie,
-    this.espacamento, // <<< NOVO CAMPO NO CONSTRUTOR
-    this.fazendaNome, 
+    this.espacamento,
+    this.fazendaNome,
+    this.volumeTotalTalhao, // Adicionado ao construtor
   });
 
   Talhao copyWith({
@@ -37,8 +41,9 @@ class Talhao {
     double? areaHa,
     double? idadeAnos,
     String? especie,
-    String? espacamento, // <<< NOVO CAMPO NO COPYWITH
+    String? espacamento,
     String? fazendaNome,
+    double? volumeTotalTalhao,
   }) {
     return Talhao(
       id: id ?? this.id,
@@ -48,8 +53,9 @@ class Talhao {
       areaHa: areaHa ?? this.areaHa,
       idadeAnos: idadeAnos ?? this.idadeAnos,
       especie: especie ?? this.especie,
-      espacamento: espacamento ?? this.espacamento, // <<< NOVO CAMPO AQUI
+      espacamento: espacamento ?? this.espacamento,
       fazendaNome: fazendaNome ?? this.fazendaNome,
+      volumeTotalTalhao: volumeTotalTalhao ?? this.volumeTotalTalhao,
     );
   }
 
@@ -62,7 +68,7 @@ class Talhao {
       'areaHa': areaHa,
       'idadeAnos': idadeAnos,
       'especie': especie,
-      'espacamento': espacamento, // <<< NOVO CAMPO NO TOMAP
+      'espacamento': espacamento,
     };
   }
 
@@ -75,7 +81,7 @@ class Talhao {
       areaHa: map['areaHa'],
       idadeAnos: map['idadeAnos'],
       especie: map['especie'],
-      espacamento: map['espacamento'], // <<< NOVO CAMPO NO FROMMAP
+      espacamento: map['espacamento'],
       fazendaNome: map['fazendaNome'], 
     );
   }
