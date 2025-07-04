@@ -1,9 +1,9 @@
-// lib/services/sampling_service.dart (VERSÃO FINAL E CORRETA)
+// lib/services/sampling_service.dart (VERSÃO FINAL COM IMPORT CORRETO)
 
 import 'dart:math';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:geoforestcoletor/services/geojson_service.dart';
+import 'package:geoforestcoletor/services/geojson_service.dart'; // <<< IMPORT ADICIONADO AQUI
 
 // Classe auxiliar para transportar o ponto gerado e as propriedades do talhão.
 class GeneratedPoint {
@@ -17,7 +17,7 @@ class SamplingService {
   
   // Método principal refatorado para o novo fluxo de múltiplos talhões.
   List<GeneratedPoint> generateMultiTalhaoSamplePoints({
-    required List<ImportedFeature> importedFeatures,
+    required List<ImportedPolygonFeature> importedFeatures,
     required double hectaresPerSample,
   }) {
     if (hectaresPerSample <= 0 || importedFeatures.isEmpty) return [];
@@ -57,11 +57,6 @@ class SamplingService {
 
     return validSamplePoints;
   }
-
-  // =========================================================================
-  // <<< CORREÇÃO: MÉTODO ANTIGO E OBSOLETO REMOVIDO >>>
-  // O método 'generateGridSamplePoints' foi removido para eliminar o erro.
-  // =========================================================================
 
   bool _isPointInPolygon(LatLng point, List<LatLng> polygonVertices) {
     if (polygonVertices.isEmpty) return false;

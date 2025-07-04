@@ -1,4 +1,4 @@
-// lib/pages/menu/map_import_page.dart
+// lib/pages/menu/map_import_page.dart (VERSÃO COMPLETA E FINAL)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,9 +60,32 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
     }
   }
 
+  // NOVA FUNÇÃO para mostrar o diálogo de importação
   Future<void> _handleImport() async {
     final provider = context.read<MapProvider>();
-    final resultMessage = await provider.processarImportacaoDeArquivo();
+    
+    // Mostra um diálogo para o usuário escolher o que importar
+    final bool? isPlano = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('O que você quer importar?'),
+        content: const Text('Escolha o tipo de arquivo para importar para esta atividade.'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false), // Carga de Talhões
+            child: const Text('Carga de Talhões (Polígonos)'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true), // Plano de Amostragem
+            child: const Text('Plano de Amostragem (Pontos)'),
+          ),
+        ],
+      ),
+    );
+
+    if (isPlano == null || !mounted) return;
+
+    final resultMessage = await provider.processarImportacaoDeArquivo(isPlanoDeAmostragem: isPlano);
     
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(resultMessage), duration: const Duration(seconds: 5)));
@@ -195,8 +218,8 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
             tooltip: 'Desenhar Área'),
         IconButton(
             icon: const Icon(Icons.file_upload_outlined),
-            onPressed: mapProvider.isLoading ? null : _handleImport,
-            tooltip: 'Importar Arquivo (.json/.geojson)'),
+            onPressed: mapProvider.isLoading ? null : _handleImport, // Chama a nova função com diálogo
+            tooltip: 'Importar Arquivo'),
       ],
     );
   }

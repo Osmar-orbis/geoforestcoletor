@@ -1,4 +1,4 @@
-// lib/providers/map_provider.dart
+// lib/providers/map_provider.dart (VERSÃO COMPLETA E FINAL)
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -16,7 +16,6 @@ import 'package:geoforestcoletor/services/geojson_service.dart';
 import 'package:geoforestcoletor/services/sampling_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sqflite/sqflite.dart';
 
 enum MapLayerType { ruas, satelite, sateliteMapbox }
 
@@ -29,7 +28,7 @@ class MapProvider with ChangeNotifier {
   
   static final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
-  List<ImportedFeature> _importedFeatures = [];
+  List<ImportedPolygonFeature> _importedPolygons = [];
   List<SamplePoint> _samplePoints = [];
   bool _isLoading = false;
   Atividade? _currentAtividade;
@@ -47,7 +46,7 @@ class MapProvider with ChangeNotifier {
   // Getters
   bool get isDrawing => _isDrawing;
   List<LatLng> get drawnPoints => _drawnPoints;
-  List<Polygon> get polygons => _importedFeatures.map((f) => f.polygon).toList();
+  List<Polygon> get polygons => _importedPolygons.map((f) => f.polygon).toList();
   List<SamplePoint> get samplePoints => _samplePoints;
   bool get isLoading => _isLoading;
   Atividade? get currentAtividade => _currentAtividade;
@@ -111,7 +110,7 @@ class MapProvider with ChangeNotifier {
       cancelDrawing();
       return;
     }
-    _importedFeatures.add(ImportedFeature(
+    _importedPolygons.add(ImportedPolygonFeature(
       polygon: Polygon(points: List.from(_drawnPoints), color: const Color(0xFF617359).withAlpha(128), borderColor: const Color(0xFF1D4433), borderStrokeWidth: 2, isFilled: true),
       properties: {},
     ));
@@ -121,7 +120,7 @@ class MapProvider with ChangeNotifier {
   }
 
   void clearAllMapData() {
-    _importedFeatures = [];
+    _importedPolygons = [];
     _samplePoints = [];
     _currentAtividade = null;
     if (_isFollowingUser) toggleFollowingUser();
@@ -132,137 +131,153 @@ class MapProvider with ChangeNotifier {
   void setCurrentAtividade(Atividade atividade) {
     _currentAtividade = atividade;
   }
-
-  Future<String> processarImportacaoDeArquivo() async {
+  
+  // Função que decide qual tipo de importação fazer (pontos ou polígonos)
+  Future<String> processarImportacaoDeArquivo({required bool isPlanoDeAmostragem}) async {
     if (_currentAtividade == null) {
       return "Erro: Nenhuma atividade selecionada para o planejamento.";
     }
     _setLoading(true);
 
-    final pontosImportados = await _geoJsonService.importAmostragemGeoJson();
-
-    if (pontosImportados.isNotEmpty) {
-      return await _processarPlanoDeAmostragemImportado(pontosImportados);
+    if (isPlanoDeAmostragem) {
+      // Importa PONTOS (plano de coleta)
+      final pontosImportados = await _geoJsonService.importPoints();
+      if (pontosImportados.isNotEmpty) {
+        final message = await _processarPlanoDeAmostragemImportado(pontosImportados);
+         _setLoading(false);
+        return message;
+      }
     } else {
-      final poligonosImportados = await _geoJsonService.importAndParseMultiTalhaoGeoJson();
+      // Importa POLÍGONOS (carga de talhões)
+      final poligonosImportados = await _geoJsonService.importPolygons();
       if (poligonosImportados.isNotEmpty) {
-        return await _processarCargaDeTalhoesImportada(poligonosImportados);
+        final message = await _processarCargaDeTalhoesImportada(poligonosImportados);
+        _setLoading(false);
+        return message;
       }
     }
-
+    
     _setLoading(false);
-    return "Nenhum dado válido (polígonos ou pontos) foi encontrado no arquivo GeoJSON.";
+    return "Nenhum dado válido foi encontrado no arquivo selecionado.";
   }
 
-  Future<String> _processarCargaDeTalhoesImportada(List<ImportedFeature> features) async {
-    _importedFeatures = [];
-    _samplePoints = [];
+  // Processa a importação de polígonos (Carga de Talhões)
+  Future<String> _processarCargaDeTalhoesImportada(List<ImportedPolygonFeature> features) async {
+    _importedPolygons = []; // Limpa polígonos antigos
+    _samplePoints = []; // Limpa pontos antigos
     notifyListeners();
 
     int fazendasCriadas = 0;
     int talhoesCriados = 0;
-    final Map<String, Fazenda> fazendaCache = {};
     
-    for (final feature in features) {
-      final props = feature.properties;
-      final fazendaIdentificador = (props['fazenda_id'] ?? props['fazenda_nome'] ?? props['fazenda'])?.toString();
-      final talhaoIdentificador = (props['talhao_nome'] ?? props['talhao_id'] ?? props['talhao'])?.toString();
-      
-      if (fazendaIdentificador == null || talhaoIdentificador == null) continue;
+    await _dbHelper.database.then((db) async => await db.transaction((txn) async {
+      for (final feature in features) {
+        final props = feature.properties;
+        final fazendaId = (props['fazenda_id'] ?? props['fazenda_nome'] ?? props['fazenda'])?.toString();
+        final nomeTalhao = (props['talhao_nome'] ?? props['talhao_id'] ?? props['talhao'])?.toString();
+        
+        if (fazendaId == null || nomeTalhao == null) continue;
 
-      try {
-        if (!fazendaCache.containsKey(fazendaIdentificador)) {
-          final fazenda = Fazenda(
-            id: fazendaIdentificador,
-            atividadeId: _currentAtividade!.id!,
-            nome: props['fazenda_nome']?.toString() ?? fazendaIdentificador,
-            municipio: props['fazenda_municipio']?.toString() ?? 'N/I',
-            estado: props['fazenda_estado']?.toString() ?? 'N/I',
-          );
-          await (await _dbHelper.database).insert('fazendas', fazenda.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
-          fazendaCache[fazendaIdentificador] = fazenda;
+        // Verifica/cria a fazenda
+        Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [fazendaId, _currentAtividade!.id!])).map((e) => Fazenda.fromMap(e)).firstOrNull;
+        if (fazenda == null) {
+          fazenda = Fazenda(id: fazendaId, atividadeId: _currentAtividade!.id!, nome: props['fazenda_nome']?.toString() ?? fazendaId, municipio: 'N/I', estado: 'N/I');
+          await txn.insert('fazendas', fazenda.toMap());
           fazendasCriadas++;
         }
         
-        Talhao talhao = Talhao(
-          fazendaId: fazendaIdentificador,
-          fazendaAtividadeId: _currentAtividade!.id!,
-          nome: talhaoIdentificador,
-          especie: props['talhao_especie']?.toString(),
-          areaHa: (props['talhao_area_ha'] as num?)?.toDouble(),
-          idadeAnos: (props['talhao_idade_anos'] as num?)?.toDouble(),
-          fazendaNome: fazendaCache[fazendaIdentificador]?.nome,
-          espacamento: props['talhao_espacamento']?.toString(),
-        );
-        final talhaoId = await _dbHelper.insertTalhao(talhao);
-        feature.properties['db_talhao_id'] = talhaoId;
-        feature.properties['db_fazenda_id'] = fazendaIdentificador;
-        feature.properties['db_fazenda_nome'] = fazendaCache[fazendaIdentificador]?.nome;
-        feature.properties['db_talhao_nome'] = talhaoIdentificador;
-        talhoesCriados++;
-      } catch (e) {
-        _setLoading(false);
-        return "Erro ao processar o talhão '$talhaoIdentificador': ${e.toString()}.";
+        // Verifica/cria o talhão
+        Talhao? talhao = (await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [nomeTalhao, fazenda.id, fazenda.atividadeId])).map((e) => Talhao.fromMap(e)).firstOrNull;
+        if (talhao == null) {
+          talhao = Talhao(
+            fazendaId: fazenda.id, fazendaAtividadeId: fazenda.atividadeId, nome: nomeTalhao,
+            especie: props['especie']?.toString(), areaHa: (props['area_ha'] as num?)?.toDouble(),
+          );
+          final talhaoId = await txn.insert('talhoes', talhao.toMap());
+          talhao = talhao.copyWith(id: talhaoId);
+          talhoesCriados++;
+        }
+        
+        // Adiciona dados ao polígono para uso posterior
+        feature.properties['db_talhao_id'] = talhao.id;
+        feature.properties['db_fazenda_nome'] = fazenda.nome;
       }
-    }
+    }));
     
-    _importedFeatures = features;
-    _setLoading(false);
-    
-    return "Importação de Carga concluída: ${features.length} polígonos, ${fazendasCriadas} novas fazendas e ${talhoesCriados} novos talhões criados.";
+    _importedPolygons = features;
+    notifyListeners();
+    return "Carga concluída: ${features.length} polígonos, $fazendasCriadas novas fazendas e $talhoesCriados novos talhões criados.";
   }
 
-  Future<String> _processarPlanoDeAmostragemImportado(List<Map<String, dynamic>> pontos) async {
-    _importedFeatures = [];
-    _samplePoints = [];
+  // Processa a importação de pontos (Plano de Amostragem)
+  Future<String> _processarPlanoDeAmostragemImportado(List<ImportedPointFeature> pontosImportados) async {
+    _importedPolygons = []; // Limpa polígonos
+    _samplePoints = []; // Limpa pontos
     notifyListeners();
 
+    final db = await _dbHelper.database;
     final List<Parcela> parcelasParaSalvar = [];
-    for (final props in pontos) {
-      final talhaoProps = Talhao(
-        fazendaId: props['fazenda_id'],
-        fazendaAtividadeId: _currentAtividade!.id!,
-        nome: props['talhao_nome'],
-        especie: props['talhao_especie'],
-        areaHa: props['talhao_area_ha'],
-        idadeAnos: props['talhao_idade_anos'],
-        espacamento: props['talhao_espacamento'],
-        fazendaNome: props['fazenda_nome'],
-      );
+    int novasFazendas = 0;
+    int novosTalhoes = 0;
+    
+    await db.transaction((txn) async {
+      for (final ponto in pontosImportados) {
+        final props = ponto.properties;
+        final fazendaId = (props['fazenda_id'] ?? props['fazenda'])?.toString();
+        final nomeTalhao = (props['talhao'] ?? props['talhao_nome'])?.toString();
+        
+        if (fazendaId == null || nomeTalhao == null) continue;
 
-      final talhaoId = await _dbHelper.insertTalhao(talhaoProps);
-      
-      parcelasParaSalvar.add(Parcela(
-        talhaoId: talhaoId,
-        idParcela: props['parcela_id_plano'].toString(),
-        areaMetrosQuadrados: (props['parcela_area_m2'] as num?)?.toDouble() ?? 0.0,
-        latitude: props['latitude'],
-        longitude: props['longitude'],
-        status: StatusParcela.pendente,
-        dataColeta: DateTime.now(),
-        nomeFazenda: props['fazenda_nome'],
-        idFazenda: props['fazenda_id'],
-        nomeTalhao: props['talhao_nome'],
-      ));
-    }
+        // Garante que a FAZENDA existe
+        Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [fazendaId, _currentAtividade!.id!])).map((e) => Fazenda.fromMap(e)).firstOrNull;
+        if (fazenda == null) {
+          fazenda = Fazenda(id: fazendaId, atividadeId: _currentAtividade!.id!, nome: props['fazenda']?.toString() ?? fazendaId, municipio: 'N/I', estado: 'N/I');
+          await txn.insert('fazendas', fazenda.toMap());
+          novasFazendas++;
+        }
+
+        // Garante que o TALHÃO existe
+        Talhao? talhao = (await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [nomeTalhao, fazenda.id, fazenda.atividadeId])).map((e) => Talhao.fromMap(e)).firstOrNull;
+        if (talhao == null) {
+          talhao = Talhao(
+            fazendaId: fazenda.id, fazendaAtividadeId: fazenda.atividadeId, nome: nomeTalhao,
+            especie: props['especie']?.toString(), areaHa: (props['area_ha'] as num?)?.toDouble(),
+            espacamento: props['espacam']?.toString(),
+          );
+          final talhaoId = await txn.insert('talhoes', talhao.toMap());
+          talhao = talhao.copyWith(id: talhaoId);
+          novosTalhoes++;
+        }
+        
+        // Cria a PARCELA para salvar
+        parcelasParaSalvar.add(Parcela(
+          talhaoId: talhao.id,
+          idParcela: props['parcela_id_plano']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          areaMetrosQuadrados: (props['area_m2'] as num?)?.toDouble() ?? 0.0,
+          latitude: ponto.position.latitude, longitude: ponto.position.longitude,
+          status: StatusParcela.pendente,
+          dataColeta: DateTime.now(),
+          nomeFazenda: fazenda.nome, idFazenda: fazenda.id, nomeTalhao: talhao.nome,
+        ));
+      }
+    });
     
     if (parcelasParaSalvar.isNotEmpty) {
       await _dbHelper.saveBatchParcelas(parcelasParaSalvar);
       await loadSamplesParaAtividade();
     }
 
-    _setLoading(false);
-    return "${parcelasParaSalvar.length} pontos de amostragem importados e salvos com sucesso.";
+    return "Plano importado: ${parcelasParaSalvar.length} amostras salvas. Novas Fazendas: $novasFazendas, Novos Talhões: $novosTalhoes.";
   }
 
   Future<String> gerarAmostrasParaAtividade({required double hectaresPerSample}) async {
-    if (_importedFeatures.isEmpty) return "Nenhum polígono de talhão carregado.";
+    if (_importedPolygons.isEmpty) return "Nenhum polígono de talhão carregado.";
     if (_currentAtividade == null) return "Erro: Atividade atual não definida.";
 
     _setLoading(true);
 
     final pontosGerados = _samplingService.generateMultiTalhaoSamplePoints(
-      importedFeatures: _importedFeatures,
+      importedFeatures: _importedPolygons,
       hectaresPerSample: hectaresPerSample,
     );
 
@@ -284,8 +299,8 @@ class MapProvider with ChangeNotifier {
           latitude: ponto.position.latitude, longitude: ponto.position.longitude,
           status: StatusParcela.pendente, dataColeta: DateTime.now(),
           nomeFazenda: props['db_fazenda_nome']?.toString(),
-          idFazenda: props['db_fazenda_id']?.toString(),
-          nomeTalhao: props['db_talhao_nome']?.toString(),
+          idFazenda: props['fazenda_id']?.toString(),
+          nomeTalhao: props['talhao_nome']?.toString(),
         ));
         pointIdCounter++;
       }
