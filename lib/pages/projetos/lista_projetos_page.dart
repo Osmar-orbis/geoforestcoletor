@@ -1,13 +1,14 @@
-// lib/pages/projetos/lista_projetos_page.dart
+// lib/pages/projetos/lista_projetos_page.dart (VERSÃO CORRIGIDA PARA IMPORTAÇÃO)
 
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
+import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/projeto_model.dart';
 import 'package:geoforestcoletor/pages/projetos/detalhes_projeto_page.dart';
-import 'dart:io';
-import 'package:file_picker/file_picker.dart';
-import 'form_projeto_page.dart'; 
+import 'form_projeto_page.dart';
 
 class ListaProjetosPage extends StatefulWidget {
   final String title;
@@ -30,8 +31,13 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
   List<Projeto> projetos = [];
   bool _isLoading = true;
 
+  // Estado para o modo de seleção normal
   bool _isSelectionMode = false;
   final Set<int> _selectedProjetos = {};
+
+  // Estado para o modo de importação
+  final Map<int, List<Atividade>> _atividadesPorProjeto = {};
+  bool _isLoadingAtividades = false;
 
   @override
   void initState() {
@@ -42,124 +48,52 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
   Future<void> _carregarProjetos() async {
     setState(() => _isLoading = true);
     final data = await dbHelper.getTodosProjetos();
-    setState(() {
-      projetos = data;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        projetos = data;
+        _isLoading = false;
+      });
+    }
   }
 
+  // --- MÉTODOS PARA O MODO DE VISUALIZAÇÃO/EDIÇÃO ---
+
   void _clearSelection() {
-    setState(() {
-      _selectedProjetos.clear();
-      _isSelectionMode = false;
-    });
+    if (mounted) {
+      setState(() {
+        _selectedProjetos.clear();
+        _isSelectionMode = false;
+      });
+    }
   }
 
   void _toggleSelection(int projetoId) {
-    setState(() {
-      if (_selectedProjetos.contains(projetoId)) {
-        _selectedProjetos.remove(projetoId);
-      } else {
-        _selectedProjetos.add(projetoId);
-      }
-      _isSelectionMode = _selectedProjetos.isNotEmpty;
-    });
-  }
-  
-  Future<void> _iniciarImportacaoParaProjeto(Projeto projeto) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['csv'],
-    );
-
-    if (result == null || result.files.single.path == null) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Importação cancelada.')));
-      return;
-    }
-
-    if (!mounted) return;
-    
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Processando arquivo... Isso pode levar um momento.'),
-      duration: Duration(seconds: 15),
-    ));
-
-    try {
-      final file = File(result.files.single.path!);
-      final csvContent = await file.readAsString();
-      String message;
-
-      switch (widget.importType) {
-        case 'cubagem':
-          message = await dbHelper.importarCubagemDeEquipe(csvContent, projeto.id!);
-          break;
-        case 'parcela':
-        default:
-          message = await dbHelper.importarColetaDeEquipe(csvContent, projeto.id!);
-          break;
-      }
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).removeCurrentSnackBar();
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Resultado da Importação'),
-            content: Text(message),
-            actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
-          ),
-        );
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).removeCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao importar: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-  
-  Future<void> _importarProjetoGeoJson() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['geojson', 'json'],
-    );
-
-    if (result != null && result.files.single.path != null) {
-      File file = File(result.files.single.path!);
-      final fileContent = await file.readAsString();
-
-      final String message = await dbHelper.importarProjetoCompleto(fileContent);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 5),
-        ));
-        _carregarProjetos();
-      }
+    if (mounted) {
+      setState(() {
+        if (_selectedProjetos.contains(projetoId)) {
+          _selectedProjetos.remove(projetoId);
+        } else {
+          _selectedProjetos.add(projetoId);
+        }
+        _isSelectionMode = _selectedProjetos.isNotEmpty;
+      });
     }
   }
 
   Future<void> _deletarProjetosSelecionados() async {
-    if (_selectedProjetos.isEmpty) return;
+    if (_selectedProjetos.isEmpty || !mounted) return;
 
     final confirmar = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
               title: const Text('Confirmar Exclusão'),
               content: Text(
-                  'Tem certeza que deseja apagar os ${_selectedProjetos.length} projetos selecionados? Todas as atividades, fazendas, talhões e coletas associadas serão perdidas permanentemente.'),
+                  'Tem certeza que deseja apagar os ${_selectedProjetos.length} projetos selecionados e TODOS os seus dados (atividades, fazendas, coletas, etc)? Esta ação é PERMANENTE.'),
               actions: [
-                TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: const Text('Cancelar')),
+                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
                 FilledButton(
                     onPressed: () => Navigator.of(ctx).pop(true),
-                    style:
-                        FilledButton.styleFrom(backgroundColor: Colors.red),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
                     child: const Text('Apagar')),
               ],
             ));
@@ -172,97 +106,223 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
     }
   }
   
+  void _navegarParaDetalhes(Projeto projeto) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => DetalhesProjetoPage(projeto: projeto)))
+      .then((_) => _carregarProjetos());
+  }
+  
+  // --- MÉTODOS PARA O MODO DE IMPORTAÇÃO ---
+
+  Future<void> _carregarAtividadesDoProjeto(int projetoId) async {
+    if (_atividadesPorProjeto.containsKey(projetoId)) return;
+    if (mounted) setState(() => _isLoadingAtividades = true);
+    final atividades = await dbHelper.getAtividadesDoProjeto(projetoId);
+    if (mounted) {
+      setState(() {
+        _atividadesPorProjeto[projetoId] = atividades;
+        _isLoadingAtividades = false;
+      });
+    }
+  }
+
+  Future<void> _iniciarImportacao(Atividade atividade) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+
+    if (result == null || result.files.single.path == null) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Importação cancelada.')));
+      return;
+    }
+
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text("Processando arquivo..."),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final file = File(result.files.single.path!);
+      final csvContent = await file.readAsString();
+      String message;
+
+      switch (widget.importType) {
+        case 'cubagem':
+          message = await dbHelper.importarCubagemDeEquipe(csvContent, atividade.id!);
+          break;
+        case 'parcela':
+        default:
+          message = await dbHelper.importarColetaDeEquipe(csvContent, atividade.id!);
+          break;
+      }
+      
+      if (mounted) {
+        Navigator.of(context).pop(); // Fecha o dialog de "processando"
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Resultado da Importação'),
+            content: Text(message),
+            actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
+          ),
+        );
+        Navigator.of(context).pop(); // Volta para a tela de menu
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Fecha o dialog de "processando"
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao importar: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // --- WIDGETS DE CONSTRUÇÃO ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _isSelectionMode
-          ? AppBar(
-              leading: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: _clearSelection,
-              ),
-              title: Text('${_selectedProjetos.length} selecionados'),
-              actions: [
-                // ====================================================================
-                // <<< CORREÇÃO APLICADA AQUI >>>
-                // O botão de exportar projetos foi removido, pois a exportação
-                // de planos agora é feita pela tela do mapa.
-                // ====================================================================
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: _deletarProjetosSelecionados,
-                  tooltip: 'Apagar Selecionados',
-                ),
-              ],
-            )
-          : AppBar(
-              title: Text(widget.title),
-              actions: [
-                if (!widget.isImporting)
-                  IconButton(
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: _importarProjetoGeoJson,
-                    tooltip: 'Importar Carga de Projeto (GeoJSON)',
-                  ),
-              ],
-            ),
+      appBar: _isSelectionMode ? _buildSelectionAppBar() : _buildNormalAppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : projetos.isEmpty
-              ? const Center(
-                  child: Text(
-                      'Nenhum projeto encontrado.\nUse o botão + para adicionar um novo.',
-                      textAlign: TextAlign.center))
-              : ListView.builder(
-                  itemCount: projetos.length,
-                  itemBuilder: (context, index) {
-                    final projeto = projetos[index];
-                    final isSelected = _selectedProjetos.contains(projeto.id!);
+              ? _buildEmptyState()
+              : widget.isImporting ? _buildImportListView() : _buildNormalListView(),
+      floatingActionButton: widget.isImporting ? null : _buildAddProjectButton(),
+    );
+  }
 
-                    return Card(
-                        color: isSelected ? Colors.lightBlue.shade100 : null,
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child:
-                           ListTile(
-                            onTap: () {
-                              if (widget.isImporting) {
-                                _iniciarImportacaoParaProjeto(projeto);
-                              } else if (_isSelectionMode) {
-                                _toggleSelection(projeto.id!);
-                              } else {
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => DetalhesProjetoPage(projeto: projeto)));
-                              }
-                            },
-                            onLongPress: () {
-                              if (!widget.isImporting) {
-                                _toggleSelection(projeto.id!);
-                              }
-                            },
-                            leading: Icon(
-                                isSelected ? Icons.check_circle : (widget.isImporting ? Icons.file_download_outlined : Icons.folder_outlined),
-                                color: Theme.of(context).primaryColor,
-                            ),
-                            title: Text(projeto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('Responsável: ${projeto.responsavel}'),
-                            trailing: Text(DateFormat('dd/MM/yy').format(projeto.dataCriacao)),
-                          ),
-                        );
-                  },
-                ),
-      floatingActionButton: widget.isImporting ? null : FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const FormProjetoPage()),
-          ).then((criado) {
-            if (criado == true) {
-              _carregarProjetos();
-            }
-          });
-        },
-        tooltip: 'Adicionar Projeto',
-        child: const Icon(Icons.add),
+  AppBar _buildNormalAppBar() {
+    return AppBar(
+      title: Text(widget.title),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.upload_file_outlined),
+          onPressed: () { /* Ação de importar GeoJSON se necessário */},
+          tooltip: 'Importar Carga de Projeto (GeoJSON)',
+        ),
+      ],
+    );
+  }
+
+  AppBar _buildSelectionAppBar() {
+    return AppBar(
+      leading: IconButton(icon: const Icon(Icons.close), onPressed: _clearSelection),
+      title: Text('${_selectedProjetos.length} selecionados'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.delete_outline),
+          onPressed: _deletarProjetosSelecionados,
+          tooltip: 'Apagar Selecionados',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNormalListView() {
+    return ListView.builder(
+      itemCount: projetos.length,
+      itemBuilder: (context, index) {
+        final projeto = projetos[index];
+        final isSelected = _selectedProjetos.contains(projeto.id!);
+
+        return Card(
+          color: isSelected ? Colors.lightBlue.shade100 : null,
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: ListTile(
+            onTap: () => _isSelectionMode ? _toggleSelection(projeto.id!) : _navegarParaDetalhes(projeto),
+            onLongPress: () => _toggleSelection(projeto.id!),
+            leading: Icon(
+              isSelected ? Icons.check_circle : Icons.folder_outlined,
+              color: Theme.of(context).primaryColor,
+            ),
+            title: Text(projeto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text('Responsável: ${projeto.responsavel}'),
+            trailing: Text(DateFormat('dd/MM/yy').format(projeto.dataCriacao)),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildImportListView() {
+    return ListView.builder(
+      itemCount: projetos.length,
+      itemBuilder: (context, index) {
+        final projeto = projetos[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: ExpansionTile(
+            leading: Icon(Icons.folder_copy_outlined, color: Theme.of(context).primaryColor),
+            title: Text(projeto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(projeto.responsavel),
+            onExpansionChanged: (isExpanding) {
+              if (isExpanding) _carregarAtividadesDoProjeto(projeto.id!);
+            },
+            children: [
+              if (_isLoadingAtividades && !_atividadesPorProjeto.containsKey(projeto.id))
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_atividadesPorProjeto[projeto.id]?.isEmpty ?? true)
+                const ListTile(
+                  title: Text('Nenhuma atividade neste projeto.'),
+                  leading: Icon(Icons.info_outline, color: Colors.grey),
+                )
+              else
+                ..._atividadesPorProjeto[projeto.id]!.map((atividade) {
+                  return ListTile(
+                    title: Text(atividade.tipo),
+                    subtitle: Text(atividade.descricao.isNotEmpty ? atividade.descricao : 'Sem descrição'),
+                    leading: const Icon(Icons.file_download_outlined, color: Colors.green),
+                    onTap: () => _iniciarImportacao(atividade),
+                  );
+                }).toList()
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.folder_off_outlined, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text('Nenhum projeto encontrado.', style: TextStyle(fontSize: 18)),
+          if (!widget.isImporting)
+            const Text('Use o botão "+" para adicionar um novo.', style: TextStyle(color: Colors.grey)),
+        ],
       ),
+    );
+  }
+
+  Widget _buildAddProjectButton() {
+    return FloatingActionButton(
+      onPressed: () {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => const FormProjetoPage()))
+          .then((criado) {
+            if (criado == true) _carregarProjetos();
+          });
+      },
+      tooltip: 'Adicionar Projeto',
+      child: const Icon(Icons.add),
     );
   }
 }

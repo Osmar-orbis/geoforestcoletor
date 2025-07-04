@@ -1,4 +1,4 @@
-// lib/pages/analises/analise_selecao_page.dart (VERSÃO FINAL E CORRETA)
+// lib/pages/analises/analise_selecao_page.dart (VERSÃO COM SORTIMENTOS FIXOS)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
@@ -6,7 +6,6 @@ import 'package:geoforestcoletor/models/atividade_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
 import 'package:geoforestcoletor/pages/dashboard/relatorio_comparativo_page.dart';
 import 'package:geoforestcoletor/pages/analises/analise_volumetrica_page.dart';
-import 'package:geoforestcoletor/pages/analises/definicao_sortimento_page.dart'; // <<< Import da nova página
 
 class AnaliseSelecaoPage extends StatefulWidget {
   const AnaliseSelecaoPage({super.key});
@@ -128,14 +127,6 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
     );
   }
 
-  // <<< NOVA FUNÇÃO DE NAVEGAÇÃO >>>
-  void _navegarParaDefinicaoSortimento() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const DefinicaoSortimentoPage()),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final Map<String, List<Talhao>> talhoesPorFazenda = {};
@@ -212,19 +203,11 @@ class _AnaliseSelecaoPageState extends State<AnaliseSelecaoPage> {
           ],
         ),
       ),
-      // <<< FLOATING ACTION BUTTON CORRIGIDO >>>
+      // <<< FLOATING ACTION BUTTON ATUALIZADO (REMOVIDO O BOTÃO DE SORTIMENTO) >>>
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          FloatingActionButton(
-            onPressed: _navegarParaDefinicaoSortimento,
-            heroTag: 'definirSortimentoFab',
-            tooltip: 'Definir Sortimentos',
-            mini: true,
-            child: const Icon(Icons.rule),
-          ),
-          const SizedBox(height: 16),
           FloatingActionButton.extended(
             onPressed: _navegarParaAnaliseVolumetrica,
             heroTag: 'analiseVolumetricaFab',

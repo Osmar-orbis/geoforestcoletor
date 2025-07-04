@@ -1,12 +1,15 @@
-// lib/data/datasources/local/database_helper.dart (VERSÃO COMPLETA, CORRETA E VALIDADA)
+// lib/data/datasources/local/database_helper.dart (VERSÃO FINALÍSSIMA COM IMPORTAÇÃO CORRETA)
 
 import 'dart:convert';
+import 'dart:math';
 import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:proj4dart/proj4dart.dart' as proj4;
 import 'package:sqflite/sqflite.dart';
+import 'package:collection/collection.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Imports de Modelos
 import 'package:geoforestcoletor/models/projeto_model.dart';
@@ -60,7 +63,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       join(await getDatabasesPath(), 'geoforestcoletor.db'),
-      version: 24, // <<< VERSÃO ATUALIZADA >>>
+      version: 24,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -653,98 +656,133 @@ class DatabaseHelper {
     );
   }
   
-  Future<String> importarColetaDeEquipe(String csvContent, int projetoIdAlvo) async {
+  // =====================================================================
+  // <<< FUNÇÃO DE IMPORTAÇÃO DE AMOSTRAS CORRIGIDA >>>
+  // =====================================================================
+  Future<String> importarColetaDeEquipe(String csvContent, int atividadeIdAlvo) async {
     final db = await database;
-    int parcelasImportadas = 0;
+    int parcelasProcessadas = 0;
     int arvoresImportadas = 0;
-    int novasAtividades = 0;
     int novasFazendas = 0;
     int novosTalhoes = 0;
     final List<List<dynamic>> rows = const CsvToListConverter(fieldDelimiter: ',', eol: '\n').convert(csvContent);
     if (rows.length < 2) return "Erro: O arquivo CSV está vazio ou contém apenas o cabeçalho.";
+    
     final headers = rows.first.map((h) => h.toString().trim()).toList();
-    final dataRows = rows.sublist(1);
+    final dataRows = rows.sublist(1).map((row) => Map.fromIterables(headers, row)).toList();
+
+    // <<< MUDANÇA CRÍTICA 1: Agrupar as linhas por parcela ANTES de ir ao banco >>>
+    final parcelasAgrupadas = groupBy(dataRows, (row) {
+        final idFazenda = row['Codigo_Fazenda']?.toString() ?? row['Fazenda']?.toString() ?? 'FAZENDA_PADRAO';
+        final nomeTalhao = row['Talhao']?.toString() ?? 'TALHAO_PADRAO';
+        final idParcela = row['ID_Coleta_Parcela']?.toString() ?? 'PARCELA_PADRAO';
+        return '$idFazenda-$nomeTalhao-$idParcela';
+    });
+
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final nomeZona = prefs.getString('zona_utm_selecionada') ?? 'SIRGAS 2000 / UTM Zona 22S';
+      final codigoEpsg = zonasUtmSirgas2000[nomeZona]!;
+      final projWGS84 = proj4.Projection.get('EPSG:4326')!;
+      final projUTM = proj4.Projection.get('EPSG:$codigoEpsg')!;
+
       await db.transaction((txn) async {
-        final Map<String, int> talhaoCache = {};
-        for (final row in dataRows) {
-          final rowMap = Map.fromIterables(headers, row);
-          final tipoAtividade = rowMap['Atividade_Tipo']?.toString() ?? 'Inventário Importado';
-          final descricaoAtividade = rowMap['Atividade_Descricao']?.toString() ?? 'Dados importados de CSV';
-          Atividade? atividade = (await txn.query('atividades', where: 'tipo = ? AND projetoId = ?', whereArgs: [tipoAtividade, projetoIdAlvo])).map((e) => Atividade.fromMap(e)).firstOrNull;
-          if (atividade == null) {
-            final novaAtividade = Atividade(projetoId: projetoIdAlvo, tipo: tipoAtividade, descricao: descricaoAtividade, dataCriacao: DateTime.now());
-            final id = await txn.insert('atividades', novaAtividade.toMap());
-            atividade = novaAtividade.copyWith(id: id);
-            novasAtividades++;
-          }
-          final idFazenda = rowMap['Codigo_Fazenda']?.toString() ?? rowMap['Fazenda'].toString();
-          Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [idFazenda, atividade.id!])).map((e) => Fazenda.fromMap(e)).firstOrNull;
-          if (fazenda == null) {
-            final novaFazenda = Fazenda(id: idFazenda, atividadeId: atividade.id!, nome: rowMap['Fazenda'].toString(), municipio: 'N/I', estado: 'N/I');
-            await txn.insert('fazendas', novaFazenda.toMap());
-            fazenda = novaFazenda;
-            novasFazendas++;
-          }
-          final nomeTalhao = rowMap['Talhao'].toString();
-          final cacheKey = "${fazenda.id}-${fazenda.atividadeId}-$nomeTalhao";
-          int talhaoId;
-          if (talhaoCache.containsKey(cacheKey)) {
-            talhaoId = talhaoCache[cacheKey]!;
-          } else {
+        for (var entry in parcelasAgrupadas.entries) {
+            final grupoDeLinhas = entry.value;
+            final primeiraLinha = grupoDeLinhas.first;
+
+            // --- 1. Encontrar ou criar Fazenda e Talhão ---
+            final idFazenda = primeiraLinha['Codigo_Fazenda']?.toString() ?? primeiraLinha['Fazenda']?.toString() ?? 'FAZENDA_PADRAO';
+            Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [idFazenda, atividadeIdAlvo])).map((e) => Fazenda.fromMap(e)).firstOrNull;
+            if (fazenda == null) {
+                fazenda = Fazenda(id: idFazenda, atividadeId: atividadeIdAlvo, nome: primeiraLinha['Fazenda'].toString(), municipio: 'N/I', estado: 'N/I');
+                await txn.insert('fazendas', fazenda.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
+                novasFazendas++;
+            }
+            
+            final nomeTalhao = primeiraLinha['Talhao']?.toString() ?? 'TALHAO_PADRAO';
             Talhao? talhao = (await txn.query('talhoes', where: 'nome = ? AND fazendaId = ? AND fazendaAtividadeId = ?', whereArgs: [nomeTalhao, fazenda.id, fazenda.atividadeId])).map((e) => Talhao.fromMap(e)).firstOrNull;
             if (talhao == null) {
-              final novoTalhao = Talhao(
-                fazendaId: fazenda.id,
-                fazendaAtividadeId: fazenda.atividadeId,
-                nome: nomeTalhao,
-                espacamento: rowMap['Espacamento_Talhao']?.toString(),
-              );
-              talhaoId = await txn.insert('talhoes', novoTalhao.toMap());
-              novosTalhoes++;
-            } else {
-              talhaoId = talhao.id!;
+                talhao = Talhao(
+                    fazendaId: fazenda.id, 
+                    fazendaAtividadeId: fazenda.atividadeId, 
+                    nome: nomeTalhao,
+                    areaHa: double.tryParse(primeiraLinha['Area_ha_Talhao']?.toString() ?? ''),
+                    especie: primeiraLinha['Especie_Talhao']?.toString(),
+                    espacamento: primeiraLinha['Espacamento_Talhao']?.toString(),
+                );
+                final talhaoId = await txn.insert('talhoes', talhao.toMap());
+                talhao = talhao.copyWith(id: talhaoId);
+                novosTalhoes++;
             }
-            talhaoCache[cacheKey] = talhaoId;
-          }
-          final idParcelaColeta = rowMap['ID_Coleta_Parcela'].toString();
-          Parcela? parcelaExistente = (await txn.query('parcelas', where: 'idParcela = ? AND talhaoId = ?', whereArgs: [idParcelaColeta, talhaoId])).map((e) => Parcela.fromMap(e)).firstOrNull;
-          int parcelaDbId;
-          if (parcelaExistente == null) {
+
+            // --- 2. Preparar dados da Parcela (com área e coordenadas) ---
+            double area = double.tryParse(primeiraLinha['Area_m2']?.toString() ?? '0') ?? 0;
+            double? largura = double.tryParse(primeiraLinha['Largura_m']?.toString() ?? '');
+            double? comprimento = double.tryParse(primeiraLinha['Comprimento_m']?.toString() ?? '');
+            double? raio = double.tryParse(primeiraLinha['Raio_m']?.toString() ?? '');
+            if (area <= 0) {
+                if (largura != null && comprimento != null) area = largura * comprimento;
+                else if (raio != null) area = pi * raio * raio;
+            }
+
+            double? lat, lon;
+            final easting = double.tryParse(primeiraLinha['Easting']?.toString() ?? '');
+            final northing = double.tryParse(primeiraLinha['Northing']?.toString() ?? '');
+            if(easting != null && northing != null) {
+                final pontoWGS84 = projUTM.transform(projWGS84, proj4.Point(x: easting, y: northing));
+                lat = pontoWGS84.y;
+                lon = pontoWGS84.x;
+            } else {
+                lat = double.tryParse(primeiraLinha['Latitude']?.toString() ?? '');
+                lon = double.tryParse(primeiraLinha['Longitude']?.toString() ?? '');
+            }
+
+            // --- 3. Inserir ou atualizar a Parcela ---
+            final idParcelaColeta = primeiraLinha['ID_Coleta_Parcela']?.toString() ?? 'PARCELA_PADRAO';
+            Parcela? parcelaExistente = (await txn.query('parcelas', where: 'idParcela = ? AND talhaoId = ?', whereArgs: [idParcelaColeta, talhao.id!])).map((e) => Parcela.fromMap(e)).firstOrNull;
+            
             final novaParcela = Parcela(
-              talhaoId: talhaoId,
-              idParcela: idParcelaColeta,
-              areaMetrosQuadrados: double.tryParse(rowMap['Area_m2']?.toString() ?? '0') ?? 0,
-              dataColeta: DateTime.tryParse(rowMap['Data_Coleta']?.toString() ?? '') ?? DateTime.now(),
-              status: StatusParcela.concluida,
-              nomeFazenda: rowMap['Fazenda'].toString(),
-              nomeTalhao: nomeTalhao,
-              idFazenda: idFazenda,
+                dbId: parcelaExistente?.dbId, talhaoId: talhao.id!, idParcela: idParcelaColeta,
+                areaMetrosQuadrados: area, largura: largura, comprimento: comprimento, raio: raio,
+                latitude: lat, longitude: lon,
+                dataColeta: DateTime.tryParse(primeiraLinha['Data_Coleta']?.toString() ?? '') ?? DateTime.now(),
+                status: StatusParcela.concluida,
+                nomeFazenda: primeiraLinha['Fazenda'].toString(), nomeTalhao: nomeTalhao, idFazenda: idFazenda,
             );
-            parcelaDbId = await txn.insert('parcelas', novaParcela.toMap());
-            parcelasImportadas++;
-          } else {
-            parcelaDbId = parcelaExistente.dbId!;
-          }
-          final cap = double.tryParse(rowMap['CAP_cm']?.toString() ?? '');
-          if (cap != null) {
-            final novaArvore = Arvore(
-              cap: cap,
-              altura: double.tryParse(rowMap['Altura_m']?.toString() ?? ''),
-              linha: int.tryParse(rowMap['Linha']?.toString() ?? '0') ?? 0,
-              posicaoNaLinha: int.tryParse(rowMap['Posicao_na_Linha']?.toString() ?? '0') ?? 0,
-              dominante: rowMap['Dominante']?.toString().toLowerCase() == 'sim',
-              codigo: Codigo.values.firstWhere((e) => e.name == rowMap['Codigo_Arvore']?.toString(), orElse: () => Codigo.normal),
-              fimDeLinha: false,
-            );
-            final arvoreMap = novaArvore.toMap();
-            arvoreMap['parcelaId'] = parcelaDbId;
-            await txn.insert('arvores', arvoreMap);
-            arvoresImportadas++;
-          }
+
+            int parcelaDbId;
+            if (parcelaExistente == null) {
+                parcelaDbId = await txn.insert('parcelas', novaParcela.toMap());
+            } else {
+                parcelaDbId = parcelaExistente.dbId!;
+                await txn.update('parcelas', novaParcela.toMap(), where: 'id = ?', whereArgs: [parcelaDbId]);
+                await txn.delete('arvores', where: 'parcelaId = ?', whereArgs: [parcelaDbId]);
+            }
+            parcelasProcessadas++;
+
+            // --- 4. Inserir TODAS as árvores daquela parcela ---
+            for (final linhaArvore in grupoDeLinhas) {
+                final cap = double.tryParse(linhaArvore['CAP_cm']?.toString() ?? '');
+                if (cap != null) {
+                    final novaArvore = Arvore(
+                        cap: cap,
+                        altura: double.tryParse(linhaArvore['Altura_m']?.toString() ?? ''),
+                        linha: int.tryParse(linhaArvore['Linha']?.toString() ?? '0') ?? 0,
+                        posicaoNaLinha: int.tryParse(linhaArvore['Posicao_na_Linha']?.toString() ?? '0') ?? 0,
+                        dominante: linhaArvore['Dominante']?.toString().toLowerCase() == 'sim',
+                        codigo: Codigo.values.firstWhere((e) => e.name == linhaArvore['Codigo_Arvore']?.toString(), orElse: () => Codigo.normal),
+                        fimDeLinha: false,
+                    );
+                    final arvoreMap = novaArvore.toMap();
+                    arvoreMap['parcelaId'] = parcelaDbId;
+                    await txn.insert('arvores', arvoreMap);
+                    arvoresImportadas++;
+                }
+            }
         }
       });
-      return "Importação Concluída!\n\nParcelas Novas: $parcelasImportadas\nÁrvores Novas: $arvoresImportadas\n\nEstruturas Criadas:\n- Atividades: $novasAtividades\n- Fazendas: $novasFazendas\n- Talhões: $novosTalhoes";
+      return "Importação Concluída!\n\nParcelas Processadas: $parcelasProcessadas\nÁrvores Inseridas: $arvoresImportadas\n\nEstruturas Criadas na Atividade:\n- Fazendas: $novasFazendas\n- Talhões: $novosTalhoes";
     } catch (e, s) {
       debugPrint("Erro ao importar CSV: $e");
       debugPrint("Stack Trace: $s");
@@ -849,11 +887,10 @@ class DatabaseHelper {
     );
   }
 
-  Future<String> importarCubagemDeEquipe(String csvContent, int projetoIdAlvo) async {
+  Future<String> importarCubagemDeEquipe(String csvContent, int atividadeIdAlvo) async {
     final db = await database;
     int arvoresImportadas = 0;
     int secoesImportadas = 0;
-    int novasAtividades = 0;
     int novasFazendas = 0;
     int novosTalhoes = 0;
 
@@ -887,37 +924,20 @@ class DatabaseHelper {
 
     try {
       await db.transaction((txn) async {
-        final Map<String, int> atividadeCache = {};
         final Map<String, Fazenda> fazendaCache = {};
         final Map<String, int> talhaoCache = {};
 
         for (final entry in arvoresAgrupadas.entries) {
           final dadosPrimeiraLinha = entry.value.first;
-
-          final tipoAtividade = 'Cubagem Importada';
-          final descricaoAtividade = 'Dados de cubagem importados de CSV';
-          final chaveAtividade = '$projetoIdAlvo-$tipoAtividade';
           
-          if (!atividadeCache.containsKey(chaveAtividade)) {
-              Atividade? atividade = (await txn.query('atividades', where: 'tipo = ? AND projetoId = ?', whereArgs: [tipoAtividade, projetoIdAlvo])).map((e) => Atividade.fromMap(e)).firstOrNull;
-              if (atividade == null) {
-                  final novaAtividade = Atividade(projetoId: projetoIdAlvo, tipo: tipoAtividade, descricao: descricaoAtividade, dataCriacao: DateTime.now());
-                  final id = await txn.insert('atividades', novaAtividade.toMap());
-                  atividade = novaAtividade.copyWith(id: id);
-                  novasAtividades++;
-              }
-              atividadeCache[chaveAtividade] = atividade.id!;
-          }
-          final int atividadeId = atividadeCache[chaveAtividade]!;
-
           final idFazenda = dadosPrimeiraLinha['id_fazenda']?.toString() ?? dadosPrimeiraLinha['fazenda'].toString();
-          final chaveFazenda = '$idFazenda-$atividadeId';
+          final chaveFazenda = '$idFazenda-$atividadeIdAlvo';
 
           if (!fazendaCache.containsKey(chaveFazenda)) {
-              Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [idFazenda, atividadeId])).map((e) => Fazenda.fromMap(e)).firstOrNull;
+              Fazenda? fazenda = (await txn.query('fazendas', where: 'id = ? AND atividadeId = ?', whereArgs: [idFazenda, atividadeIdAlvo])).map((e) => Fazenda.fromMap(e)).firstOrNull;
               if (fazenda == null) {
-                  final novaFazenda = Fazenda(id: idFazenda, atividadeId: atividadeId, nome: dadosPrimeiraLinha['fazenda'].toString(), municipio: 'N/I', estado: 'N/I');
-                  await txn.insert('fazendas', novaFazenda.toMap());
+                  final novaFazenda = Fazenda(id: idFazenda, atividadeId: atividadeIdAlvo, nome: dadosPrimeiraLinha['fazenda'].toString(), municipio: 'N/I', estado: 'N/I');
+                  await txn.insert('fazendas', novaFazenda.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
                   fazenda = novaFazenda;
                   novasFazendas++;
               }
@@ -971,14 +991,14 @@ class DatabaseHelper {
           }
         }
       });
-      return "Importação Concluída!\n\nÁrvores Cubadas Novas: $arvoresImportadas\nSeções Novas: $secoesImportadas\n\nEstruturas Criadas:\n- Atividades: $novasAtividades\n- Fazendas: $novasFazendas\n- Talhões: $novosTalhoes";
+      return "Importação Concluída!\n\nÁrvores Cubadas Novas: $arvoresImportadas\nSeções Novas: $secoesImportadas\n\nEstruturas Criadas na Atividade:\n- Fazendas: $novasFazendas\n- Talhões: $novosTalhoes";
     } catch (e, s) {
       debugPrint("Erro ao importar CSV de cubagem: $e\nStack: $s");
       return "Erro Crítico: Ocorreu uma falha ao processar o arquivo. Verifique o formato do CSV e tente novamente.\n\nDetalhe: ${e.toString()}";
     }
   }
 
-  // --- MÉTODOS CRUD: SORTIMENTOS (CORRIGIDO E MOVIDO PARA CÁ) ---
+  // --- MÉTODOS CRUD: SORTIMENTOS ---
   Future<int> insertSortimento(SortimentoModel s) async =>
       await (await database).insert('sortimentos', s.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
 

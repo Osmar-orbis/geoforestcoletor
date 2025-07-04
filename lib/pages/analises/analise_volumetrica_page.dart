@@ -1,7 +1,8 @@
-// lib/pages/analises/analise_volumetrica_page.dart (VERSÃO FINALÍSSIMA)
+// lib/pages/analises/analise_volumetrica_page.dart (VERSÃO COM FLUXO DE DADOS CORRIGIDO)
 
 import 'package:flutter/material.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
+import 'package:geoforestcoletor/models/arvore_model.dart';
 import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
 import 'package:geoforestcoletor/models/parcela_model.dart';
 import 'package:geoforestcoletor/models/talhao_model.dart';
@@ -27,7 +28,7 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
   final Set<int> _arvoresSelecionadasIds = {};
   Map<String, dynamic>? _resultadoRegressao;
   Map<String, dynamic>? _tabelaProducaoInventario;
-  Map<String, dynamic>? _tabelaProducaoSortimento; // <<< NOVO ESTADO
+  Map<String, dynamic>? _tabelaProducaoSortimento;
   bool _isAnalyzing = false;
 
   @override
@@ -74,9 +75,6 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
     });
   }
 
-  // =========================================================
-  // <<< FUNÇÃO PRINCIPAL ATUALIZADA >>>
-  // =========================================================
   Future<void> _gerarAnaliseCompleta() async {
     if (_arvoresSelecionadasIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -100,82 +98,82 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
     // 1. GERAR A EQUAÇÃO
     final resultadoRegressao = await analysisService.gerarEquacaoSchumacherHall(arvoresParaRegressao);
 
-    if (resultadoRegressao['error'] != null) {
-      if (mounted) {
-        setState(() {
-          _resultadoRegressao = resultadoRegressao;
-          _isAnalyzing = false;
-        });
-      }
+    if (resultadoRegressao['error'] != null && mounted) {
+      setState(() {
+        _resultadoRegressao = resultadoRegressao;
+        _isAnalyzing = false;
+      });
       return;
     }
     
-    // 2. BUSCAR DADOS DE INVENTÁRIO E SORTIMENTO
+    // 2. BUSCAR DADOS COMPLETOS DO INVENTÁRIO PARA OS MESMOS TALHÕES
     final talhaoIds = arvoresParaRegressao.map((a) => a.talhaoId!).toSet();
     final List<Parcela> parcelasDoInventario = [];
+    final List<Arvore> arvoresDoInventario = [];
     final List<Talhao> talhoesDoInventario = [];
     final todosTalhoes = await dbHelper.getTalhoesComParcelasConcluidas();
 
-    // Loop para buscar dados de inventário
     for (final talhaoId in talhaoIds) {
       final dadosAgregados = await dbHelper.getDadosAgregadosDoTalhao(talhaoId);
       final parcelas = dadosAgregados['parcelas'] as List<Parcela>;
-      if (parcelas.isNotEmpty) {
+      final arvores = dadosAgregados['arvores'] as List<Arvore>;
+
+      if (parcelas.isNotEmpty && arvores.isNotEmpty) {
         parcelasDoInventario.addAll(parcelas);
-        final talhaoCorrespondente = todosTalhoes.firstWhere((t) => t.id == talhaoId, orElse: () => Talhao(id: talhaoId, fazendaId: '', fazendaAtividadeId: 0, nome: 'Desconhecido'));
+        arvoresDoInventario.addAll(arvores);
+        final talhaoCorrespondente = todosTalhoes.firstWhere(
+          (t) => t.id == talhaoId,
+          orElse: () => Talhao(id: talhaoId, fazendaId: '', fazendaAtividadeId: 0, nome: 'Desconhecido'),
+        );
         talhoesDoInventario.add(talhaoCorrespondente);
       }
     }
     
-    // 3. APLICAR EQUAÇÃO NO INVENTÁRIO
+    // 3. APLICAR EQUAÇÃO E CALCULAR TOTAIS DO INVENTÁRIO
     if (parcelasDoInventario.isNotEmpty) {
-      final analiseInventario = analysisService.getTalhaoInsights(parcelasDoInventario, []);
-      final arvoresDoInventario = (await dbHelper.getDadosAgregadosDoTalhao(talhaoIds.first))['arvores'];
-
-      final arvoresDoInventarioComVolume = analysisService.aplicarEquacaoDeVolume(
+      // Recalcula o volume de cada árvore do inventário usando a equação gerada
+      final arvoresComVolume = analysisService.aplicarEquacaoDeVolume(
         arvoresDoInventario: arvoresDoInventario,
         b0: resultadoRegressao['b0'],
         b1: resultadoRegressao['b1'],
         b2: resultadoRegressao['b2'],
       );
       
-      final double volumeTotalAmostrado = arvoresDoInventarioComVolume.fold(0.0, (sum, arv) => sum + (arv.volume ?? 0.0));
-      final double areaTotalAmostradaHa = analiseInventario.areaTotalAmostradaHa;
-      final double volumePorHectare = areaTotalAmostradaHa > 0 ? volumeTotalAmostrado / areaTotalAmostradaHa : 0.0;
+      // Gera os insights (inclusive o volume/ha) a partir das árvores com volume já calculado
+      final analiseInventario = analysisService.getTalhaoInsights(parcelasDoInventario, arvoresComVolume);
       
       _tabelaProducaoInventario = {
         'talhoes': talhoesDoInventario.map((t) => t.nome).join(', '),
-        'volume_ha': volumePorHectare,
+        'volume_ha': analiseInventario.volumePorHectare, // <<< VALOR CORRETO
         'arvores_ha': analiseInventario.arvoresPorHectare,
         'area_basal_ha': analiseInventario.areaBasalPorHectare,
       };
     }
 
-    // 4. APLICAR SORTIMENTO NAS ÁRVORES CUBADAS
-    final definicoesSortimento = await dbHelper.getTodosSortimentos();
-    if (definicoesSortimento.isNotEmpty) {
-      final Map<String, double> volumesTotaisSortimento = {};
-      double volumeTotalCubadoClassificado = 0;
+    // 4. CLASSIFICAR SORTIMENTOS USANDO AS ÁRVORES CUBADAS COMO AMOSTRA
+    final Map<String, double> volumesTotaisSortimento = {};
+    double volumeTotalCubadoClassificado = 0;
 
-      for (final arvoreCubada in arvoresParaRegressao) {
-        final secoes = await dbHelper.getSecoesPorArvoreId(arvoreCubada.id!);
-        final resultadoClassificacao = analysisService.classificarSortimentos(secoes, definicoesSortimento);
-        
+    for (final arvoreCubada in arvoresParaRegressao) {
+      final secoes = await dbHelper.getSecoesPorArvoreId(arvoreCubada.id!);
+      final resultadoClassificacao = analysisService.classificarSortimentos(secoes); 
+      
+      if (resultadoClassificacao.isNotEmpty) {
         resultadoClassificacao.forEach((nome, volume) {
           volumesTotaisSortimento.update(nome, (v) => v + volume, ifAbsent: () => volume);
           volumeTotalCubadoClassificado += volume;
         });
       }
-      
-      // 5. CALCULAR PORCENTAGENS
-      final Map<String, double> pctSortimento = {};
-      if(volumeTotalCubadoClassificado > 0) {
-        volumesTotaisSortimento.forEach((nome, volume) {
-          pctSortimento[nome] = (volume / volumeTotalCubadoClassificado) * 100;
-        });
-      }
-      _tabelaProducaoSortimento = {'porcentagens': pctSortimento};
     }
+    
+    // 5. CALCULAR PORCENTAGENS DOS SORTIMENTOS
+    final Map<String, double> pctSortimento = {};
+    if(volumeTotalCubadoClassificado > 0) {
+      volumesTotaisSortimento.forEach((nome, volume) {
+        pctSortimento[nome] = (volume / volumeTotalCubadoClassificado) * 100;
+      });
+    }
+    _tabelaProducaoSortimento = {'porcentagens': pctSortimento};
 
     if (mounted) {
       setState(() {
@@ -184,6 +182,7 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +240,7 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
           ),
           
           if (_resultadoRegressao != null) _buildResultCard(),
-          if (_tabelaProducaoSortimento != null) _buildSortmentTable(), // <<< NOVO WIDGET
+          if (_tabelaProducaoSortimento != null) _buildSortmentTable(),
           if (_tabelaProducaoInventario != null) _buildProductionTable(),
         ],
       ),
@@ -276,16 +275,19 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
     );
   }
 
-  // =========================================================
-  // <<< NOVO WIDGET PARA A TABELA DE SORTIMENTO >>>
-  // =========================================================
   Widget _buildSortmentTable() {
-    final Map<String, double> porcentagens = _tabelaProducaoSortimento!['porcentagens'] ?? {};
+    final Map<String, double> porcentagens = _tabelaProducaoSortimento?['porcentagens'] ?? {};
     if (porcentagens.isEmpty) {
-      return const SizedBox.shrink(); // Não mostra nada se não houver dados
+      return Card( margin: const EdgeInsets.only(top: 16), color: Colors.amber.shade100, child: Padding( padding: const EdgeInsets.all(16.0), child: Text('Aviso: Nenhuma tora foi classificada nos sortimentos. Verifique os diâmetros das árvores cubadas.', style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.bold)),),);
     }
 
     final double volumeTotalHa = _tabelaProducaoInventario?['volume_ha'] ?? 0.0;
+    
+    final sortedKeys = porcentagens.keys.toList()..sort((a,b) {
+      final numA = double.tryParse(a.split('-').first.replaceAll('>', '')) ?? 99;
+      final numB = double.tryParse(b.split('-').first.replaceAll('>', '')) ?? 99;
+      return numB.compareTo(numA); 
+    });
     
     return Card(
       margin: const EdgeInsets.only(top: 16),
@@ -297,12 +299,11 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
           children: [
             Text('3. Produção por Sortimento', style: Theme.of(context).textTheme.titleLarge),
             const Divider(height: 24),
-            ...porcentagens.entries.map((entry) {
-              final nomeSortimento = entry.key;
-              final pct = entry.value;
+            ...sortedKeys.map((key) {
+              final pct = porcentagens[key]!;
               final volumeHaSortimento = volumeTotalHa * (pct / 100);
               return _buildStatRow(
-                '$nomeSortimento:',
+                '$key:',
                 '${volumeHaSortimento.toStringAsFixed(2)} m³/ha (${pct.toStringAsFixed(1)}%)'
               );
             }).toList(),
@@ -313,8 +314,8 @@ class _AnaliseVolumetricaPageState extends State<AnaliseVolumetricaPage> {
   }
 
   Widget _buildProductionTable() {
-    if (_tabelaProducaoInventario!['error'] != null) {
-      return Card(margin: const EdgeInsets.only(top: 16), color: Colors.amber.shade100, child: Padding( padding: const EdgeInsets.all(16.0), child: Text('Aviso: ${_tabelaProducaoInventario!['error']}', style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.bold)),),);
+    if (_tabelaProducaoInventario == null || (_tabelaProducaoInventario!['volume_ha'] as double) <= 0) {
+      return const SizedBox.shrink();
     }
     return Card(
       margin: const EdgeInsets.only(top: 16),
