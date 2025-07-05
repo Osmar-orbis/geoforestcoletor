@@ -1,4 +1,4 @@
-// lib/pages/atividades/atividades_page.dart
+// lib/pages/atividades/atividades_page.dart (VERSÃO COM EDIÇÃO DE ATIVIDADE)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -12,7 +12,6 @@ import 'detalhes_atividade_page.dart';
 import 'form_atividade_page.dart';
 
 class AtividadesPage extends StatefulWidget {
-  // A página recebe o objeto do projeto para saber de qual projeto listar as atividades
   final Projeto projeto;
 
   const AtividadesPage({
@@ -36,12 +35,10 @@ class _AtividadesPageState extends State<AtividadesPage> {
 
   void _carregarAtividades() {
     setState(() {
-      // Pede ao serviço de banco de dados para buscar as atividades pelo ID do projeto
       _atividadesFuture = dbHelper.getAtividadesDoProjeto(widget.projeto.id!);
     });
   }
 
-  // Função para mostrar um diálogo de confirmação antes de excluir
   Future<void> _mostrarDialogoDeConfirmacao(Atividade atividade) async {
     final bool? confirmar = await showDialog<bool>(
       context: context,
@@ -69,7 +66,7 @@ class _AtividadesPageState extends State<AtividadesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Atividade excluída com sucesso!'), backgroundColor: Colors.red),
       );
-      _carregarAtividades(); // Recarrega a lista para refletir a exclusão
+      _carregarAtividades();
     }
   }
 
@@ -81,13 +78,29 @@ class _AtividadesPageState extends State<AtividadesPage> {
         builder: (context) => FormAtividadePage(projetoId: widget.projeto.id!),
       ),
     );
-    // Se a tela de formulário retornar 'true', recarrega a lista
     if (atividadeCriada == true && mounted) {
       _carregarAtividades();
     }
   }
   
-  // Navega para a tela de detalhes da atividade
+  // <<< MUDANÇA 1 >>> Nova função para navegar para a tela de edição
+  void _navegarParaEdicao(Atividade atividade) async {
+    final bool? atividadeEditada = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        // Reutiliza a FormAtividadePage, passando a atividade a ser editada
+        builder: (context) => FormAtividadePage(
+          projetoId: atividade.projetoId,
+          atividadeParaEditar: atividade,
+        ),
+      ),
+    );
+    // Se a edição foi salva com sucesso, recarrega a lista
+    if (atividadeEditada == true && mounted) {
+      _carregarAtividades();
+    }
+  }
+  
   void _navegarParaDetalhes(Atividade atividade) {
     Navigator.push(
       context,
@@ -101,22 +114,18 @@ class _AtividadesPageState extends State<AtividadesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // Usa o nome do projeto no título da página
         title: Text('Atividades de ${widget.projeto.nome}'),
         centerTitle: true,
       ),
       body: FutureBuilder<List<Atividade>>(
         future: _atividadesFuture,
         builder: (context, snapshot) {
-          // Enquanto está carregando, mostra um indicador de progresso
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          // Se deu algum erro na busca
           if (snapshot.hasError) {
             return Center(child: Text('Erro ao carregar atividades: ${snapshot.error}'));
           }
-          // Se a busca foi concluída mas não retornou dados
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(
               child: Text(
@@ -129,15 +138,30 @@ class _AtividadesPageState extends State<AtividadesPage> {
 
           final atividades = snapshot.data!;
 
-          // Se chegou aqui, temos dados. Construímos a lista.
           return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80), // Espaço para o botão flutuante
+            padding: const EdgeInsets.only(bottom: 80),
             itemCount: atividades.length,
             itemBuilder: (context, index) {
               final atividade = atividades[index];
+              
+              // <<< MUDANÇA 2 >>> Adiciona a ação de editar no Slidable
               return Slidable(
                 key: ValueKey(atividade.id),
-                // Ações que aparecem ao deslizar para a esquerda
+                // Ações que aparecem ao deslizar para a direita
+                startActionPane: ActionPane(
+                  motion: const DrawerMotion(),
+                  extentRatio: 0.25,
+                  children: [
+                    SlidableAction(
+                      onPressed: (_) => _navegarParaEdicao(atividade),
+                      backgroundColor: Colors.blue.shade700,
+                      foregroundColor: Colors.white,
+                      icon: Icons.edit_outlined,
+                      label: 'Editar',
+                    ),
+                  ],
+                ),
+                // Ações que aparecem ao deslizar para a esquerda (excluir)
                 endActionPane: ActionPane(
                   motion: const StretchMotion(),
                   children: [

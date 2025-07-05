@@ -1,4 +1,4 @@
-// lib/main.dart (VERSÃO CORRETA E FINAL)
+// lib/main.dart (VERSÃO COM SPLASH SCREEN)
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -16,6 +16,8 @@ import 'package:geoforestcoletor/providers/map_provider.dart';
 import 'package:geoforestcoletor/providers/team_provider.dart';
 import 'package:geoforestcoletor/controller/login_controller.dart';
 import 'package:geoforestcoletor/pages/projetos/lista_projetos_page.dart';
+// <<< MUDANÇA 1 >>> Importar a nova splash page
+import 'package:geoforestcoletor/pages/menu/splash_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,9 +63,16 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: _buildThemeData(Brightness.light),
         darkTheme: _buildThemeData(Brightness.dark),
-        initialRoute: '/',
+        
+        // <<< MUDANÇA 2 >>> A rota inicial agora é a splash page
+        initialRoute: '/', 
+        
         routes: {
-          '/': (context) {
+          // A rota '/' agora aponta para a SplashPage
+          '/': (context) => const SplashPage(),
+          
+          // A lógica de verificação de login foi movida para uma nova rota '/auth_check'
+          '/auth_check': (context) {
             return Consumer<LoginController>(
               builder: (context, loginController, child) {
                 if (!loginController.isInitialized) {
@@ -80,15 +89,13 @@ class MyApp extends StatelessWidget {
               },
             );
           },
+          
+          // O resto das rotas permanece igual
           '/equipe': (context) => const EquipePage(),
           '/home': (context) => const HomePage(title: 'Geo Forest Analytics'),
           '/lista_projetos': (context) => const ListaProjetosPage(title: 'Meus Projetos'),
         },
-        // ===============================================================
-        // <<< CORREÇÃO APLICADA AQUI >>>
-        // Esta linha instala o "observador de rotas" (a central de interfones)
-        // para que a página do mapa seja notificada quando você voltar para ela.
-        // ================================================================
+        
         navigatorObservers: [MapProvider.routeObserver],
         
         builder: (context, child) {

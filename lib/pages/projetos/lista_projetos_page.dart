@@ -1,8 +1,10 @@
-// lib/pages/projetos/lista_projetos_page.dart (VERSÃO CORRIGIDA PARA IMPORTAÇÃO)
+// lib/pages/projetos/lista_projetos_page.dart (VERSÃO COM EDIÇÃO DE PROJETO)
 
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+// <<< MUDANÇA 1 >>> Import do Slidable
+import 'package:flutter_slidable/flutter_slidable.dart'; 
 import 'package:intl/intl.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
 import 'package:geoforestcoletor/models/atividade_model.dart';
@@ -10,10 +12,13 @@ import 'package:geoforestcoletor/models/projeto_model.dart';
 import 'package:geoforestcoletor/pages/projetos/detalhes_projeto_page.dart';
 import 'form_projeto_page.dart';
 
+// <<< MUDANÇA 2 >>> Import do form_projeto_page para reutilização no modo de edição
+import 'form_projeto_page.dart'; 
+
 class ListaProjetosPage extends StatefulWidget {
   final String title;
   final bool isImporting;
-  final String? importType; // 'parcela', 'cubagem', etc.
+  final String? importType;
 
   const ListaProjetosPage({
     super.key,
@@ -31,11 +36,9 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
   List<Projeto> projetos = [];
   bool _isLoading = true;
 
-  // Estado para o modo de seleção normal
   bool _isSelectionMode = false;
   final Set<int> _selectedProjetos = {};
 
-  // Estado para o modo de importação
   final Map<int, List<Atividade>> _atividadesPorProjeto = {};
   bool _isLoadingAtividades = false;
 
@@ -55,7 +58,7 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
       });
     }
   }
-
+  
   // --- MÉTODOS PARA O MODO DE VISUALIZAÇÃO/EDIÇÃO ---
 
   void _clearSelection() {
@@ -87,8 +90,7 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
         context: context,
         builder: (ctx) => AlertDialog(
               title: const Text('Confirmar Exclusão'),
-              content: Text(
-                  'Tem certeza que deseja apagar os ${_selectedProjetos.length} projetos selecionados e TODOS os seus dados (atividades, fazendas, coletas, etc)? Esta ação é PERMANENTE.'),
+              content: Text('Tem certeza que deseja apagar os ${_selectedProjetos.length} projetos selecionados e TODOS os seus dados (atividades, fazendas, coletas, etc)? Esta ação é PERMANENTE.'),
               actions: [
                 TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
                 FilledButton(
@@ -103,6 +105,23 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
       }
       _clearSelection();
       await _carregarProjetos();
+    }
+  }
+
+  // <<< MUDANÇA 3 >>> Nova função para navegar para a tela de edição
+  void _navegarParaEdicao(Projeto projeto) async {
+    final bool? projetoEditado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        // Reutilizamos a FormProjetoPage, passando o projeto a ser editado
+        builder: (context) => FormProjetoPage(
+          projetoParaEditar: projeto,
+        ),
+      ),
+    );
+    // Se a edição foi salva com sucesso, recarregamos a lista
+    if (projetoEditado == true && mounted) {
+      _carregarProjetos();
     }
   }
   
@@ -124,7 +143,8 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
       });
     }
   }
-
+  
+  // (O resto dos métodos de importação permanece igual)
   Future<void> _iniciarImportacao(Atividade atividade) async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -157,13 +177,17 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
       final csvContent = await file.readAsString();
       String message;
 
+      // <<< CORREÇÃO NA IMPORTAÇÃO >>> A importação de CSV precisa do ID do PROJETO, não da atividade.
+      final projetoPai = projetos.firstWhere((p) => _atividadesPorProjeto[p.id]?.contains(atividade) ?? false);
+      final projetoId = projetoPai.id!;
+
       switch (widget.importType) {
         case 'cubagem':
-          message = await dbHelper.importarCubagemDeEquipe(csvContent, atividade.id!);
+          message = await dbHelper.importarCubagemDeEquipe(csvContent, projetoId);
           break;
         case 'parcela':
         default:
-          message = await dbHelper.importarColetaDeEquipe(csvContent, atividade.id!);
+          message = await dbHelper.importarColetaDeEquipe(csvContent, projetoId);
           break;
       }
       
@@ -188,6 +212,7 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
       }
     }
   }
+
 
   // --- WIDGETS DE CONSTRUÇÃO ---
 
@@ -238,19 +263,37 @@ class _ListaProjetosPageState extends State<ListaProjetosPage> {
         final projeto = projetos[index];
         final isSelected = _selectedProjetos.contains(projeto.id!);
 
-        return Card(
-          color: isSelected ? Colors.lightBlue.shade100 : null,
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: ListTile(
-            onTap: () => _isSelectionMode ? _toggleSelection(projeto.id!) : _navegarParaDetalhes(projeto),
-            onLongPress: () => _toggleSelection(projeto.id!),
-            leading: Icon(
-              isSelected ? Icons.check_circle : Icons.folder_outlined,
-              color: Theme.of(context).primaryColor,
+        // <<< MUDANÇA 4 >>> O Card agora é envolvido por um Slidable
+        return Slidable(
+          key: ValueKey(projeto.id),
+          // Ações que aparecem ao deslizar (neste caso, da esquerda para a direita)
+          startActionPane: ActionPane(
+            motion: const DrawerMotion(),
+            extentRatio: 0.25, // Ocupa 25% da largura
+            children: [
+              SlidableAction(
+                onPressed: (_) => _navegarParaEdicao(projeto),
+                backgroundColor: Colors.blue.shade700,
+                foregroundColor: Colors.white,
+                icon: Icons.edit_outlined,
+                label: 'Editar',
+              ),
+            ],
+          ),
+          child: Card(
+            color: isSelected ? Colors.lightBlue.shade100 : null,
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: ListTile(
+              onTap: () => _isSelectionMode ? _toggleSelection(projeto.id!) : _navegarParaDetalhes(projeto),
+              onLongPress: () => _toggleSelection(projeto.id!),
+              leading: Icon(
+                isSelected ? Icons.check_circle : Icons.folder_outlined,
+                color: Theme.of(context).primaryColor,
+              ),
+              title: Text(projeto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text('Responsável: ${projeto.responsavel}'),
+              trailing: Text(DateFormat('dd/MM/yy').format(projeto.dataCriacao)),
             ),
-            title: Text(projeto.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('Responsável: ${projeto.responsavel}'),
-            trailing: Text(DateFormat('dd/MM/yy').format(projeto.dataCriacao)),
           ),
         );
       },
