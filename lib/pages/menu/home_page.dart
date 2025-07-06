@@ -9,7 +9,7 @@ import 'package:geoforestcoletor/providers/map_provider.dart';
 import 'package:geoforestcoletor/services/export_service.dart';
 import 'package:geoforestcoletor/widgets/menu_card.dart';
 import 'package:provider/provider.dart';
-
+import 'package:geoforestcoletor/providers/license_provider.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
@@ -183,9 +183,12 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
+ 
   @override
   Widget build(BuildContext context) {
+    // <<< CORREÇÃO: A LÓGICA DO PROVIDER FOI MOVIDA PARA DENTRO DO BUILD >>>
+    final licenseProvider = context.watch<LicenseProvider>();
+    
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: Padding(
@@ -220,7 +223,19 @@ class _HomePageState extends State<HomePage> {
             MenuCard(
               icon: Icons.insights_outlined,
               label: 'GeoForest Analista',
-              onTap: () => _abrirAnalistaDeDados(context),
+              // <<< CORREÇÃO: LÓGICA DE BLOQUEIO APLICADA NO onTap >>>
+              onTap: () {
+                if (licenseProvider.licenseInfo?.canUseAnalysis ?? false) {
+                  _abrirAnalistaDeDados(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Módulo de Análise não incluído no seu plano.'),
+                      backgroundColor: Colors.orange,
+                    )
+                  );
+                }
+              },
             ),
             MenuCard(
               icon: Icons.download_for_offline_outlined,

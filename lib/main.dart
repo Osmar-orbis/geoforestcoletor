@@ -18,6 +18,7 @@ import 'package:geoforestcoletor/controller/login_controller.dart';
 import 'package:geoforestcoletor/pages/projetos/lista_projetos_page.dart';
 // <<< MUDANÇA 1 >>> Importar a nova splash page
 import 'package:geoforestcoletor/pages/menu/splash_page.dart';
+import 'package:geoforestcoletor/providers/license_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,6 +58,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LoginController()),
         ChangeNotifierProvider(create: (_) => MapProvider()),
         ChangeNotifierProvider(create: (_) => TeamProvider()),
+        ChangeNotifierProvider(create: (_) => LicenseProvider())
       ],
       child: MaterialApp(
         title: 'Geo Forest Analytics',

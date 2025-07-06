@@ -13,7 +13,7 @@ import 'package:geoforestcoletor/pages/projetos/detalhes_projeto_page.dart';
 import 'form_projeto_page.dart';
 
 // <<< MUDANÇA 2 >>> Import do form_projeto_page para reutilização no modo de edição
-import 'form_projeto_page.dart'; 
+
 
 class ListaProjetosPage extends StatefulWidget {
   final String title;

@@ -1,4 +1,4 @@
-// lib/services/licensing_service.dart (CORREÇÃO DE SINTAXE)
+// lib/services/licensing_service.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -16,34 +16,60 @@ class LicenseException implements Exception {
 class LicensingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<void> checkAndRegisterDevice(User user) async {
-    final clienteSnapshot = await _firestore
-        .collection('clientes')
-        .where('usuariosPermitidos', arrayContains: user.email)
-        .limit(1)
-        .get();
+  // MÉTODO OTIMIZADO: Agora busca o cliente diretamente pelo UID do usuário.
+  Future<Map<String, dynamic>> getLicenseDetailsForUser(User user) async {
+    // Busca o documento do cliente usando o UID do usuário como ID do documento
+    final clienteDocRef = _firestore.collection('clientes').doc(user.uid);
+    final clienteSnapshot = await clienteDocRef.get();
 
-    if (clienteSnapshot.docs.isEmpty) {
-      throw LicenseException('Seu e-mail não está autorizado a usar este aplicativo. Contate o administrador da sua empresa.');
+    // Se não encontrar um documento com o UID do usuário, significa que a licença não foi criada.
+    if (!clienteSnapshot.exists) {
+      throw LicenseException('Não foi encontrada uma licença para sua conta. Tente criar a conta novamente ou contate o suporte.');
     }
 
-    final clienteDoc = clienteSnapshot.docs.first;
-    final clienteData = clienteDoc.data();
-    final statusAssinatura = clienteData['statusAssinatura'];
-    final limites = clienteData['limites'];
+    final clienteData = clienteSnapshot.data()!;
+    final planoId = clienteData['planoId'] as String?;
 
+    if (planoId == null || planoId.isEmpty) {
+      throw LicenseException('Sua conta não está associada a um plano de licença. Contate o suporte.');
+    }
+
+    // Busca os detalhes do plano central
+    final planoDoc = await _firestore.collection('planosDeLicenca').doc(planoId).get();
+
+    if (!planoDoc.exists) {
+      throw LicenseException('O plano de licença ($planoId) configurado para sua empresa não foi encontrado.');
+    }
+    
+    // Retorna os dados do cliente e do plano juntos
+    return {
+      'clienteRef': clienteSnapshot.reference, // Usamos a referência do snapshot que já pegamos
+      'planoData': planoDoc.data(),
+      'clienteData': clienteData,
+    };
+  }
+
+  // MÉTODO PRINCIPAL REFATORADO
+  Future<void> checkAndRegisterDevice(User user) async {
+    // 1. Obter detalhes da licença usando a nova função otimizada
+    final licenseDetails = await getLicenseDetailsForUser(user);
+    
+    final DocumentReference clienteRef = licenseDetails['clienteRef'];
+    final Map<String, dynamic> planoData = licenseDetails['planoData'] as Map<String, dynamic>;
+    final Map<String, dynamic> clienteData = licenseDetails['clienteData'] as Map<String, dynamic>;
+
+    // 2. Validar Status da Assinatura
+    final statusAssinatura = clienteData['statusAssinatura'];
     bool acessoPermitido = false;
 
     if (statusAssinatura == 'ativa') {
       acessoPermitido = true;
-    } 
-    else if (statusAssinatura == 'trial') {
+    } else if (statusAssinatura == 'trial') {
       final trialData = clienteData['trial'] as Map<String, dynamic>?;
       if (trialData != null && trialData['ativo'] == true) {
         final dataFimTimestamp = trialData['dataFim'] as Timestamp?;
         if (dataFimTimestamp != null) {
-          final dataFim = dataFimTimestamp.toDate();
-          if (DateTime.now().isBefore(dataFim)) {
+          if (DateTime.now().isBefore(dataFimTimestamp.toDate())) {
             acessoPermitido = true;
           } else {
             throw LicenseException('Seu período de teste expirou. Contate o suporte para contratar um plano.');
@@ -53,9 +79,16 @@ class LicensingService {
     }
 
     if (!acessoPermitido) {
-      throw LicenseException('A assinatura da sua empresa está inativa ou expirou. Por favor, contate o administrador.');
+      throw LicenseException('A assinatura da sua empresa está inativa ou expirou.');
     }
 
+    // 3. Obter limites a partir do plano
+    final limites = planoData['limites'] as Map<String, dynamic>?;
+    if (limites == null) {
+        throw LicenseException('Os limites do seu plano não estão configurados corretamente.');
+    }
+
+    // 4. O resto da lógica de verificação de dispositivo
     final tipoDispositivo = kIsWeb ? 'desktop' : 'smartphone';
     final deviceId = await _getDeviceId();
 
@@ -63,23 +96,19 @@ class LicensingService {
       throw LicenseException('Não foi possível identificar seu dispositivo.');
     }
     
-    final dispositivosAtivosRef = clienteDoc.reference.collection('dispositivosAtivos');
+    final dispositivosAtivosRef = clienteRef.collection('dispositivosAtivos');
     final dispositivoExistente = await dispositivosAtivosRef.doc(deviceId).get();
 
     if (dispositivoExistente.exists) {
-      print('Dispositivo conhecido. Acesso permitido.');
-      return; 
+      return; // Dispositivo já registrado
     }
+    
+    final contagemAtual = (await dispositivosAtivosRef.where('tipo', isEqualTo: tipoDispositivo).count().get()).count ?? 0;
+    final limiteAtual = limites[tipoDispositivo] as int? ?? 0;
 
-    final dispositivosRegistradosSnapshot = await dispositivosAtivosRef
-        .where('tipo', isEqualTo: tipoDispositivo)
-        .count()
-        .get();
-        
-    final contagemAtual = dispositivosRegistradosSnapshot.count ?? 0;
-    final limiteAtual = limites[tipoDispositivo] as int;
-
-    if (contagemAtual >= limiteAtual) {
+    // Se o limite for um número positivo, fazemos a verificação normal.
+    // Se for -1 (ou qualquer número negativo), a condição nunca será verdadeira, permitindo acesso ilimitado.
+    if (limiteAtual >= 0 && contagemAtual >= limiteAtual) {
       throw LicenseException('O limite de dispositivos do tipo "$tipoDispositivo" foi atingido para sua empresa.');
     }
     
@@ -90,11 +119,13 @@ class LicensingService {
       'registradoEm': FieldValue.serverTimestamp(),
       'nomeDispositivo': await _getDeviceName(),
     });
-
-    print('Novo dispositivo registrado com sucesso!');
   }
-
+  
+  // O MÉTODO ABAIXO PRECISA SER ATUALIZADO TAMBÉM
   Future<Map<String, int>> getDeviceUsage(String userEmail) async {
+    // Como a tela de configurações pode não ter o objeto User completo, 
+    // manter a busca por email aqui ainda é válido, mas podemos otimizar se tivermos o UID.
+    // Para simplificar, vamos manter a busca por email por enquanto.
     final clienteSnapshot = await _firestore
         .collection('clientes')
         .where('usuariosPermitidos', arrayContains: userEmail)
@@ -102,28 +133,41 @@ class LicensingService {
         .get();
 
     if (clienteSnapshot.docs.isEmpty) {
+      // Tenta uma busca secundária pelo UID, caso o cliente tenha sido criado automaticamente
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final clienteDoc = await _firestore.collection('clientes').doc(user.uid).get();
+        if (clienteDoc.exists) {
+           return _getDeviceCountFromDoc(clienteDoc.reference);
+        }
+      }
       return {'smartphone': 0, 'desktop': 0};
     }
 
     final clienteDoc = clienteSnapshot.docs.first;
-    final dispositivosAtivosRef = clienteDoc.reference.collection('dispositivosAtivos');
+    return await _getDeviceCountFromDoc(clienteDoc.reference);
+  }
 
-    final smartphoneCountSnapshot = await dispositivosAtivosRef
-        .where('tipo', isEqualTo: 'smartphone')
-        .count()
-        .get();
-    final smartphoneCount = smartphoneCountSnapshot.count ?? 0;
+  // NOVO MÉTODO AUXILIAR para evitar repetição de código
+  Future<Map<String, int>> _getDeviceCountFromDoc(DocumentReference docRef) async {
+      final dispositivosAtivosRef = docRef.collection('dispositivosAtivos');
 
-    final desktopCountSnapshot = await dispositivosAtivosRef
-        .where('tipo', isEqualTo: 'desktop')
-        .count()
-        .get();
-    final desktopCount = desktopCountSnapshot.count ?? 0;
+      final smartphoneCountSnapshot = await dispositivosAtivosRef
+          .where('tipo', isEqualTo: 'smartphone')
+          .count()
+          .get();
+      final smartphoneCount = smartphoneCountSnapshot.count ?? 0;
 
-    return {
-      'smartphone': smartphoneCount,
-      'desktop': desktopCount,
-    };
+      final desktopCountSnapshot = await dispositivosAtivosRef
+          .where('tipo', isEqualTo: 'desktop')
+          .count()
+          .get();
+      final desktopCount = desktopCountSnapshot.count ?? 0;
+
+      return {
+        'smartphone': smartphoneCount,
+        'desktop': desktopCount,
+      };
   }
 
   Future<String?> _getDeviceId() async {

@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geoforestcoletor/providers/team_provider.dart';
+import 'package:geoforestcoletor/providers/license_provider.dart';
+import 'package:geoforestcoletor/controller/login_controller.dart';
 
 class EquipePage extends StatefulWidget {
   const EquipePage({super.key});
@@ -25,14 +27,20 @@ class _EquipePageState extends State<EquipePage> {
       final teamProvider = Provider.of<TeamProvider>(context, listen: false);
       _liderController.text = teamProvider.lider ?? '';
       _ajudantesController.text = teamProvider.ajudantes ?? '';
-    });
+
+      // Carrega a licença do usuário atual
+      final user = context.read<LoginController>().user;
+      if (user != null) {
+        context.read<LicenseProvider>().loadLicense(user);
+      }
+    }); // <<< PARÊNTESE E PONTO E VÍRGULA QUE FALTAVAM
   }
 
   void _continuar() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
-      // <<< CORREÇÃO: Usa o provider para salvar os dados
+      // Usa o provider para salvar os dados
       final teamProvider = Provider.of<TeamProvider>(context, listen: false);
       await teamProvider.setTeam(
         _liderController.text,
@@ -45,7 +53,6 @@ class _EquipePageState extends State<EquipePage> {
     }
   }
 
-  // O resto do build da tela permanece o mesmo...
   @override
   Widget build(BuildContext context) {
     return Scaffold(
