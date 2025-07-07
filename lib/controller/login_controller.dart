@@ -2,7 +2,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geoforestcoletor/services/auth_service.dart'; // Importe seu AuthService
+import 'package:geovigilancia/services/auth_service.dart'; // Importe seu AuthService
 
 class LoginController with ChangeNotifier {
   final AuthService _authService = AuthService(); // Instância do seu AuthService

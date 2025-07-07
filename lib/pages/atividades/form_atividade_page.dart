@@ -1,21 +1,20 @@
-// lib/pages/atividades/form_atividade_page.dart (VERSÃO COM SUPORTE PARA EDIÇÃO)
+// lib/pages/atividades/form_atividade_page.dart (ADAPTADO PARA GEOVIGILÂNCIA)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/atividade_model.dart';
 
 class FormAtividadePage extends StatefulWidget {
-  final int projetoId;
-  // <<< MUDANÇA 1 >>> Adiciona o parâmetro opcional para edição
+  // <<< MUDANÇA: Recebe 'campanhaId' em vez de 'projetoId' >>>
+  final int campanhaId;
   final Atividade? atividadeParaEditar;
 
   const FormAtividadePage({
     super.key,
-    required this.projetoId,
+    required this.campanhaId,
     this.atividadeParaEditar,
   });
 
-  // <<< MUDANÇA 2 >>> Adiciona um getter para facilitar a verificação do modo de edição
   bool get isEditing => atividadeParaEditar != null;
 
   @override
@@ -24,51 +23,57 @@ class FormAtividadePage extends StatefulWidget {
 
 class _FormAtividadePageState extends State<FormAtividadePage> {
   final _formKey = GlobalKey<FormState>();
-  final _tipoController = TextEditingController();
+  // <<< MUDANÇA: Controller para o Dropdown >>>
+  String? _tipoSelecionado;
   final _descricaoController = TextEditingController();
 
   bool _isSaving = false;
 
+  // Lista de tipos de atividade para o dropdown
+  final List<String> _tiposDeAtividade = [
+    'LIRAa',
+    'Visita de Rotina',
+    'Ponto Estratégico',
+    'Atendimento a Denúncia',
+    'Bloqueio de Transmissão',
+    'Outra',
+  ];
+
   @override
   void initState() {
     super.initState();
-    // <<< MUDANÇA 3 >>> Lógica para pré-preencher o formulário no modo de edição
     if (widget.isEditing) {
       final atividade = widget.atividadeParaEditar!;
-      _tipoController.text = atividade.tipo;
+      // Garante que o tipo selecionado exista na lista, ou usa 'Outra'
+      _tipoSelecionado = _tiposDeAtividade.contains(atividade.tipo) ? atividade.tipo : 'Outra';
       _descricaoController.text = atividade.descricao;
     }
   }
 
   @override
   void dispose() {
-    _tipoController.dispose();
     _descricaoController.dispose();
     super.dispose();
   }
 
-  // <<< MUDANÇA 4 >>> Função de salvar agora lida com criação e edição
+  // <<< MUDANÇA: Lógica de salvar adaptada para Campanha e sem cubagem >>>
   Future<void> _salvarAtividade() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSaving = true);
 
-      // Constrói o objeto Atividade. Se estiver editando, mantém o ID e a data de criação originais.
       final atividade = Atividade(
         id: widget.isEditing ? widget.atividadeParaEditar!.id : null,
-        projetoId: widget.projetoId,
-        tipo: _tipoController.text.trim(),
+        campanhaId: widget.campanhaId,
+        tipo: _tipoSelecionado!,
         descricao: _descricaoController.text.trim(),
         dataCriacao: widget.isEditing ? widget.atividadeParaEditar!.dataCriacao : DateTime.now(),
-        // Preserva o método de cubagem se já existir
-        metodoCubagem: widget.isEditing ? widget.atividadeParaEditar!.metodoCubagem : null,
       );
 
       try {
         final dbHelper = DatabaseHelper.instance;
-        final db = await dbHelper.database; // Obtém a instância do banco
+        final db = await dbHelper.database;
         
         if (widget.isEditing) {
-          // Se estiver editando, executa um UPDATE
           await db.update(
             'atividades',
             atividade.toMap(),
@@ -76,7 +81,6 @@ class _FormAtividadePageState extends State<FormAtividadePage> {
             whereArgs: [atividade.id],
           );
         } else {
-          // Se não, executa um INSERT
           await db.insert('atividades', atividade.toMap());
         }
 
@@ -87,7 +91,7 @@ class _FormAtividadePageState extends State<FormAtividadePage> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.of(context).pop(true); // Retorna 'true' para recarregar a lista
+          Navigator.of(context).pop(true);
         }
       } catch (e) {
         if (mounted) {
@@ -106,7 +110,6 @@ class _FormAtividadePageState extends State<FormAtividadePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // <<< MUDANÇA 5 >>> O título da página e o texto do botão agora são dinâmicos
       appBar: AppBar(
         title: Text(widget.isEditing ? 'Editar Atividade' : 'Nova Atividade'),
       ),
@@ -117,15 +120,24 @@ class _FormAtividadePageState extends State<FormAtividadePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
-                controller: _tipoController,
+              // <<< MUDANÇA: TextFormField trocado por DropdownButtonFormField >>>
+              DropdownButtonFormField<String>(
+                value: _tipoSelecionado,
+                items: _tiposDeAtividade
+                    .map((tipo) => DropdownMenuItem(value: tipo, child: Text(tipo)))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _tipoSelecionado = value;
+                  });
+                },
                 decoration: const InputDecoration(
-                  labelText: 'Tipo da Atividade (ex: Inventário, Cubagem)',
+                  labelText: 'Tipo da Atividade',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.category_outlined),
                 ),
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
+                  if (value == null || value.isEmpty) {
                     return 'O tipo da atividade é obrigatório.';
                   }
                   return null;

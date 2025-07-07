@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart'; // <<< 1. IMPORTAR SLIDABLE
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:intl/intl.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
-import 'package:geoforestcoletor/models/fazenda_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/pages/fazenda/form_fazenda_page.dart';
-import 'package:geoforestcoletor/pages/fazenda/detalhes_fazenda_page.dart';
-import 'package:geoforestcoletor/pages/menu/home_page.dart';
-import 'package:geoforestcoletor/pages/dashboard/relatorio_comparativo_page.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/atividade_model.dart';
+import 'package:geovigilancia/models/fazenda_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/pages/fazenda/form_fazenda_page.dart';
+import 'package:geovigilancia/pages/fazenda/detalhes_fazenda_page.dart';
+import 'package:geovigilancia/pages/menu/home_page.dart';
+import 'package:geovigilancia/pages/dashboard/relatorio_comparativo_page.dart';
 
 class DetalhesAtividadePage extends StatefulWidget {
   final Atividade atividade;

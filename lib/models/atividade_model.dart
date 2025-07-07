@@ -1,76 +1,71 @@
 // lib/models/atividade_model.dart
 
-enum TipoAtividade {
-  ipc("Inventário Pré-Corte"),
-  ifc("Inventário Florestal Contínuo"),
-  cub("Cubagem Rigorosa"),
-  aud("Auditoria"),
-  ifq6("IFQ - 6 Meses"),
-  ifq12("IFQ - 12 Meses"),
-  ifs("Inventário de Sobrevivência e Qualidade"),
-  bio("Inventario Biomassa");
+// <<< MUDANÇA: O enum foi simplificado e adaptado para a vigilância. >>>
+// Você pode adicionar mais tipos conforme a necessidade do seu município.
+enum TipoAtividadeSaude {
+  liraa("Levantamento Rápido (LIRAa)"),
+  rotina("Visita de Rotina"),
+  pontoEstrategico("Visita a Ponto Estratégico"),
+  denuncia("Atendimento a Denúncia"),
+  bloqueio("Bloqueio de Transmissão");
 
-  const TipoAtividade(this.descricao);
+  const TipoAtividadeSaude(this.descricao);
   final String descricao;
 }
 
 class Atividade {
   final int? id;
-  final int projetoId; // Chave estrangeira para o Projeto
-  final String tipo;
-  final String descricao; // Campo para notas ou detalhes específicos
+  // <<< MUDANÇA: Renomeado de 'projetoId' para 'campanhaId' para consistência. >>>
+  final int campanhaId; 
+  final String tipo; // Ex: "LIRAa", "Rotina", etc.
+  final String descricao;
   final DateTime dataCriacao;
-  // <<< NOVO CAMPO AQUI >>>
-  // Guarda o método de cubagem ('Fixas' ou 'Relativas') se a atividade for de cubagem.
-  final String? metodoCubagem;
+
+  // <<< REMOÇÃO: O campo 'metodoCubagem' não é mais necessário. >>>
 
   Atividade({
     this.id,
-    required this.projetoId,
+    required this.campanhaId,
     required this.tipo,
     required this.descricao,
     required this.dataCriacao,
-    this.metodoCubagem, // <<< ADICIONADO AO CONSTRUTOR
   });
 
   Atividade copyWith({
     int? id,
-    int? projetoId,
+    int? campanhaId,
     String? tipo,
     String? descricao,
     DateTime? dataCriacao,
-    String? metodoCubagem, // <<< ADICIONADO AO COPYWITH
   }) {
     return Atividade(
       id: id ?? this.id,
-      projetoId: projetoId ?? this.projetoId,
+      campanhaId: campanhaId ?? this.campanhaId,
       tipo: tipo ?? this.tipo,
       descricao: descricao ?? this.descricao,
       dataCriacao: dataCriacao ?? this.dataCriacao,
-      metodoCubagem: metodoCubagem ?? this.metodoCubagem, // <<< ADICIONADO AQUI
     );
   }
-
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'projetoId': projetoId,
+      // <<< MUDANÇA: Chave do mapa atualizada. >>>
+      'campanhaId': campanhaId,
       'tipo': tipo,
       'descricao': descricao,
       'dataCriacao': dataCriacao.toIso8601String(),
-      'metodoCubagem': metodoCubagem, // <<< ADICIONADO AO MAP
     };
   }
 
   factory Atividade.fromMap(Map<String, dynamic> map) {
     return Atividade(
       id: map['id'],
-      projetoId: map['projetoId'],
+      // <<< MUDANÇA: Verifica tanto o novo nome ('campanhaId') quanto o antigo ('projetoId'). >>>
+      campanhaId: map['campanhaId'] ?? map['projetoId'],
       tipo: map['tipo'],
       descricao: map['descricao'],
       dataCriacao: DateTime.parse(map['dataCriacao']),
-      metodoCubagem: map['metodoCubagem'], // <<< ADICIONADO AO FACTORY
     );
   }
 }

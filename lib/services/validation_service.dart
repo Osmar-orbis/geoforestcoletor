@@ -1,7 +1,7 @@
 // lib/services/validation_service.dart (LÓGICA CORRIGIDA)
 
 import 'dart:math';
-import 'package:geoforestcoletor/models/arvore_model.dart';
+import 'package:geoforestcoletor/models/foco_model.dart';
 
 class ValidationResult {
   final bool isValid;

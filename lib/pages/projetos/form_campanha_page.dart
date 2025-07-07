@@ -1,29 +1,30 @@
-// lib/pages/projetos/form_projeto_page.dart (VERSÃO COM SUPORTE PARA EDIÇÃO)
+// lib/pages/campanhas/form_campanha_page.dart (ADAPTADO PARA GEOVIGILÂNCIA)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/projeto_model.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+// <<< MUDANÇA: Importa o modelo Campanha em vez de Projeto >>>
+import 'package:geovigilancia/models/campanha_model.dart'; 
 
-class FormProjetoPage extends StatefulWidget {
-  // <<< MUDANÇA 1 >>> Adiciona o parâmetro opcional para edição
-  final Projeto? projetoParaEditar;
+class FormCampanhaPage extends StatefulWidget {
+  // <<< MUDANÇA: Parâmetro para edição agora é do tipo Campanha >>>
+  final Campanha? campanhaParaEditar;
 
-  const FormProjetoPage({
+  const FormCampanhaPage({
     super.key,
-    this.projetoParaEditar,
+    this.campanhaParaEditar,
   });
 
-  // <<< MUDANÇA 2 >>> Adiciona um getter para facilitar a verificação do modo de edição
-  bool get isEditing => projetoParaEditar != null;
+  bool get isEditing => campanhaParaEditar != null;
 
   @override
-  State<FormProjetoPage> createState() => _FormProjetoPageState();
+  State<FormCampanhaPage> createState() => _FormCampanhaPageState();
 }
 
-class _FormProjetoPageState extends State<FormProjetoPage> {
+class _FormCampanhaPageState extends State<FormCampanhaPage> {
   final _formKey = GlobalKey<FormState>();
   final _nomeController = TextEditingController();
-  final _empresaController = TextEditingController();
+  // <<< MUDANÇA: Controller de 'empresa' renomeado para 'orgao' >>>
+  final _orgaoController = TextEditingController();
   final _responsavelController = TextEditingController();
 
   bool _isSaving = false;
@@ -31,67 +32,63 @@ class _FormProjetoPageState extends State<FormProjetoPage> {
   @override
   void initState() {
     super.initState();
-    // <<< MUDANÇA 3 >>> Lógica para pré-preencher o formulário no modo de edição
     if (widget.isEditing) {
-      final projeto = widget.projetoParaEditar!;
-      _nomeController.text = projeto.nome;
-      _empresaController.text = projeto.empresa;
-      _responsavelController.text = projeto.responsavel;
+      final campanha = widget.campanhaParaEditar!;
+      _nomeController.text = campanha.nome;
+      _orgaoController.text = campanha.orgao;
+      _responsavelController.text = campanha.responsavel;
     }
   }
 
   @override
   void dispose() {
     _nomeController.dispose();
-    _empresaController.dispose();
+    _orgaoController.dispose();
     _responsavelController.dispose();
     super.dispose();
   }
 
-  // <<< MUDANÇA 4 >>> Função de salvar agora lida com criação e edição
-  Future<void> _salvarProjeto() async {
+  // <<< MUDANÇA: Lógica de salvar adaptada para o objeto Campanha >>>
+  Future<void> _salvarCampanha() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSaving = true);
       
-      // Constrói o objeto Projeto. Se estiver editando, mantém o ID e a data de criação originais.
-      final projeto = Projeto(
-        id: widget.isEditing ? widget.projetoParaEditar!.id : null,
+      final campanha = Campanha(
+        id: widget.isEditing ? widget.campanhaParaEditar!.id : null,
         nome: _nomeController.text.trim(),
-        empresa: _empresaController.text.trim(),
+        orgao: _orgaoController.text.trim(),
         responsavel: _responsavelController.text.trim(),
-        dataCriacao: widget.isEditing ? widget.projetoParaEditar!.dataCriacao : DateTime.now(),
+        dataCriacao: widget.isEditing ? widget.campanhaParaEditar!.dataCriacao : DateTime.now(),
       );
 
       try {
         final dbHelper = DatabaseHelper.instance;
-        final db = await dbHelper.database; // Obtém a instância do banco
+        final db = await dbHelper.database;
         
         if (widget.isEditing) {
-          // Se estiver editando, executa um UPDATE
           await db.update(
-            'projetos',
-            projeto.toMap(),
+            'campanhas', // <<< MUDANÇA: Nome da tabela
+            campanha.toMap(),
             where: 'id = ?',
-            whereArgs: [projeto.id],
+            whereArgs: [campanha.id],
           );
         } else {
-          // Se não, executa um INSERT
-          await db.insert('projetos', projeto.toMap());
+          await dbHelper.insertCampanha(campanha); // <<< MUDANÇA: Método específico
         }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Projeto ${widget.isEditing ? "atualizado" : "criado"} com sucesso!'),
+              content: Text('Campanha ${widget.isEditing ? "atualizada" : "criada"} com sucesso!'),
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.of(context).pop(true); // Retorna 'true' para recarregar a lista
+          Navigator.of(context).pop(true);
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erro ao salvar o projeto: $e'), backgroundColor: Colors.red),
+            SnackBar(content: Text('Erro ao salvar a campanha: $e'), backgroundColor: Colors.red),
           );
         }
       } finally {
@@ -105,9 +102,8 @@ class _FormProjetoPageState extends State<FormProjetoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // <<< MUDANÇA 5 >>> O título da página e o texto do botão agora são dinâmicos
       appBar: AppBar(
-        title: Text(widget.isEditing ? 'Editar Projeto' : 'Novo Projeto'),
+        title: Text(widget.isEditing ? 'Editar Campanha' : 'Nova Campanha'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -119,28 +115,31 @@ class _FormProjetoPageState extends State<FormProjetoPage> {
               TextFormField(
                 controller: _nomeController,
                 decoration: const InputDecoration(
-                  labelText: 'Nome do Projeto',
+                  labelText: 'Nome da Campanha',
+                  hintText: 'Ex: LIRAa - Jan/2024',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.folder_outlined),
+                  prefixIcon: Icon(Icons.campaign_outlined),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'O nome do projeto é obrigatório.';
+                    return 'O nome da campanha é obrigatório.';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
+              // <<< MUDANÇA: Campo 'Empresa' adaptado para 'Órgão' >>>
               TextFormField(
-                controller: _empresaController,
+                controller: _orgaoController,
                 decoration: const InputDecoration(
-                  labelText: 'Empresa Cliente',
+                  labelText: 'Órgão Responsável',
+                  hintText: 'Ex: Secretaria de Saúde',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.business_outlined),
+                  prefixIcon: Icon(Icons.corporate_fare_outlined),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'O nome da empresa é obrigatório.';
+                    return 'O nome do órgão é obrigatório.';
                   }
                   return null;
                 },
@@ -150,6 +149,7 @@ class _FormProjetoPageState extends State<FormProjetoPage> {
                 controller: _responsavelController,
                 decoration: const InputDecoration(
                   labelText: 'Responsável Técnico',
+                  hintText: 'Ex: Coordenador de Endemias',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person_outline),
                 ),
@@ -162,11 +162,11 @@ class _FormProjetoPageState extends State<FormProjetoPage> {
               ),
               const SizedBox(height: 32),
               ElevatedButton.icon(
-                onPressed: _isSaving ? null : _salvarProjeto,
+                onPressed: _isSaving ? null : _salvarCampanha, // <<< MUDANÇA: Chama o método adaptado
                 icon: _isSaving
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.save_outlined),
-                label: Text(_isSaving ? 'Salvando...' : (widget.isEditing ? 'Atualizar Projeto' : 'Salvar Projeto')),
+                label: Text(_isSaving ? 'Salvando...' : (widget.isEditing ? 'Atualizar Campanha' : 'Salvar Campanha')),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   textStyle: const TextStyle(fontSize: 16),

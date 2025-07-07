@@ -1,15 +1,15 @@
 // lib/pages/menu/home_page.dart
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/pages/analises/analise_selecao_page.dart';
-import 'package:geoforestcoletor/pages/menu/configuracoes_page.dart';
-import 'package:geoforestcoletor/pages/projetos/lista_projetos_page.dart';
-import 'package:geoforestcoletor/pages/planejamento/selecao_atividade_mapa_page.dart';
-import 'package:geoforestcoletor/providers/map_provider.dart';
-import 'package:geoforestcoletor/services/export_service.dart';
-import 'package:geoforestcoletor/widgets/menu_card.dart';
+import 'package:geovigilancia/pages/analises/analise_selecao_page.dart';
+import 'package:geovigilancia/pages/menu/configuracoes_page.dart';
+import 'package:geovigilancia/pages/projetos/lista_projetos_page.dart';
+import 'package:geovigilancia/pages/planejamento/selecao_atividade_mapa_page.dart';
+import 'package:geovigilancia/providers/map_provider.dart';
+import 'package:geovigilancia/services/export_service.dart';
+import 'package:geovigilancia/widgets/menu_card.dart';
 import 'package:provider/provider.dart';
-import 'package:geoforestcoletor/providers/license_provider.dart';
+import 'package:geovigilancia/providers/license_provider.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});

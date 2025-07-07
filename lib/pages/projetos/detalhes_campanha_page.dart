@@ -2,12 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/projeto_model.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
-import 'package:geoforestcoletor/pages/atividades/form_atividade_page.dart';
-import 'package:geoforestcoletor/pages/atividades/detalhes_atividade_page.dart';
-import 'package:geoforestcoletor/pages/menu/home_page.dart'; // <<< 1. IMPORTA A HOMEPAGE
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/projeto_model.dart';
+import 'package:geovigilancia/models/atividade_model.dart';
+import 'package:geovigilancia/pages/atividades/form_atividade_page.dart';
+import 'package:geovigilancia/pages/atividades/detalhes_atividade_page.dart';
+import 'package:geovigilancia/pages/menu/home_page.dart'; // <<< 1. IMPORTA A HOMEPAGE
 
 class DetalhesProjetoPage extends StatefulWidget {
   final Projeto projeto;

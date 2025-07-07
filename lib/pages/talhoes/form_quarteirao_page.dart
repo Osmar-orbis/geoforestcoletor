@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
+import 'package:geoforestcoletor/models/quarteirao_model.dart';
 
 class FormTalhaoPage extends StatefulWidget {
   final String fazendaId;

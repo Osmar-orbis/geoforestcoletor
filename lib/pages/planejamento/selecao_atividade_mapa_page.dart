@@ -1,11 +1,11 @@
 // lib/pages/planejamento/selecao_atividade_mapa_page.dart (VERSÃO COMPLETA E CORRIGIDA)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
-import 'package:geoforestcoletor/models/projeto_model.dart';
-import 'package:geoforestcoletor/pages/menu/map_import_page.dart';
-import 'package:geoforestcoletor/providers/map_provider.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/atividade_model.dart';
+import 'package:geovigilancia/models/projeto_model.dart';
+import 'package:geovigilancia/pages/menu/map_import_page.dart';
+import 'package:geovigilancia/providers/map_provider.dart';
 import 'package:provider/provider.dart';
 
 class SelecaoAtividadeMapaPage extends StatefulWidget {

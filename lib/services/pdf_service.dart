@@ -2,11 +2,11 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/arvore_model.dart';
-import 'package:geoforestcoletor/models/parcela_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/services/analysis_service.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/arvore_model.dart';
+import 'package:geovigilancia/models/parcela_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/services/analysis_service.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,7 +15,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:permission_handler/permission_handler.dart';
 
-import 'package:geoforestcoletor/models/analise_result_model.dart';
+import 'package:geovigilancia/models/analise_result_model.dart';
 
 
 class PdfService {

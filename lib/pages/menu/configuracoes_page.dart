@@ -2,13 +2,13 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/controller/login_controller.dart';
+import 'package:geovigilancia/controller/login_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/services/licensing_service.dart';
-import 'package:geoforestcoletor/providers/license_provider.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/services/licensing_service.dart';
+import 'package:geovigilancia/providers/license_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 const Map<String, int> zonasUtmSirgas2000 = {

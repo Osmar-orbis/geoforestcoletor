@@ -2,7 +2,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geoforestcoletor/services/licensing_service.dart';
+import 'package:geovigilancia/services/licensing_service.dart';
 
 // Um modelo simples para guardar as informações da licença carregada
 class LicenseInfo {

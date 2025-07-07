@@ -3,8 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:geoforestcoletor/models/analise_result_model.dart';
-import 'package:geoforestcoletor/services/pdf_service.dart';
+import 'package:geovigilancia/models/analise_result_model.dart';
+import 'package:geovigilancia/services/pdf_service.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 class RendimentoDapPage extends StatefulWidget {

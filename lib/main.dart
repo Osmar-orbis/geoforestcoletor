@@ -9,16 +9,16 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 
 // Importações do Projeto
-import 'package:geoforestcoletor/pages/menu/home_page.dart';
-import 'package:geoforestcoletor/pages/menu/login_page.dart';
-import 'package:geoforestcoletor/pages/menu/equipe_page.dart';
-import 'package:geoforestcoletor/providers/map_provider.dart';
-import 'package:geoforestcoletor/providers/team_provider.dart';
-import 'package:geoforestcoletor/controller/login_controller.dart';
-import 'package:geoforestcoletor/pages/projetos/lista_projetos_page.dart';
+import 'package:geovigilancia/pages/menu/home_page.dart';
+import 'package:geovigilancia/pages/menu/login_page.dart';
+import 'package:geovigilancia/pages/menu/equipe_page.dart';
+import 'package:geovigilancia/providers/map_provider.dart';
+import 'package:geovigilancia/providers/team_provider.dart';
+import 'package:geovigilancia/controller/login_controller.dart';
+import 'package:geovigilancia/pages/projetos/lista_projetos_page.dart';
 // <<< MUDANÇA 1 >>> Importar a nova splash page
-import 'package:geoforestcoletor/pages/menu/splash_page.dart';
-import 'package:geoforestcoletor/providers/license_provider.dart';
+import 'package:geovigilancia/pages/menu/splash_page.dart';
+import 'package:geovigilancia/providers/license_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

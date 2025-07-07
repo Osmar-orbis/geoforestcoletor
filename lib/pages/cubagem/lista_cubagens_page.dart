@@ -1,10 +1,10 @@
 // lib/pages/cubagem/lista_cubagens_page.dart (ARQUIVO NOVO)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/pages/cubagem/cubagem_dados_page.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/cubagem_arvore_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/pages/cubagem/cubagem_dados_page.dart';
 
 class ListaCubagensPage extends StatefulWidget {
   final Talhao talhao;

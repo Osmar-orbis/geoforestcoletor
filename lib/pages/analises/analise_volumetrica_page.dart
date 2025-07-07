@@ -1,13 +1,13 @@
 // lib/pages/analises/analise_volumetrica_page.dart (VERSÃO FINAL COM EXPORTAÇÃO)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/arvore_model.dart';
-import 'package:geoforestcoletor/models/cubagem_arvore_model.dart';
-import 'package:geoforestcoletor/models/parcela_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/services/analysis_service.dart';
-import 'package:geoforestcoletor/services/pdf_service.dart'; // <<< IMPORTADO
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/arvore_model.dart';
+import 'package:geovigilancia/models/cubagem_arvore_model.dart';
+import 'package:geovigilancia/models/parcela_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/services/analysis_service.dart';
+import 'package:geovigilancia/services/pdf_service.dart'; // <<< IMPORTADO
 
 class AnaliseVolumetricaPage extends StatefulWidget {
   const AnaliseVolumetricaPage({super.key});

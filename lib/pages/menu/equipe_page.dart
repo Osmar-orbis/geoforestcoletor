@@ -2,9 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:geoforestcoletor/providers/team_provider.dart';
-import 'package:geoforestcoletor/providers/license_provider.dart';
-import 'package:geoforestcoletor/controller/login_controller.dart';
+import 'package:geovigilancia/providers/team_provider.dart';
+import 'package:geovigilancia/providers/license_provider.dart';
+import 'package:geovigilancia/controller/login_controller.dart';
 
 class EquipePage extends StatefulWidget {
   const EquipePage({super.key});

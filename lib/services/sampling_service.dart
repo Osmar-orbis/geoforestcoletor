@@ -5,7 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 // <<< 1. IMPORTA O NOVO MODELO CENTRALIZADO EM VEZ DO 'geojson_service' >>>
-import 'package:geoforestcoletor/models/imported_feature_model.dart';
+import 'package:geovigilancia]/models/imported_feature_model.dart';
 
 // Classe auxiliar para transportar o ponto gerado e as propriedades do talhão.
 class GeneratedPoint {

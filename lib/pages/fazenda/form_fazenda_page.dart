@@ -1,8 +1,8 @@
 // lib/pages/fazenda/form_fazenda_page.dart
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/fazenda_model.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/fazenda_model.dart';
 import 'package:sqflite/sqflite.dart';
 
 class FormFazendaPage extends StatefulWidget {

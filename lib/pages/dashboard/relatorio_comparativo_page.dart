@@ -1,14 +1,14 @@
 // lib/pages/dashboard/relatorio_comparativo_page.dart (COM VERIFICAÇÃO DE ÁREA)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/pages/dashboard/talhao_dashboard_page.dart';
-import 'package:geoforestcoletor/pages/talhoes/form_talhao_page.dart';
-import 'package:geoforestcoletor/services/pdf_service.dart';
-import 'package:geoforestcoletor/models/enums.dart';
-import 'package:geoforestcoletor/services/analysis_service.dart';
-import 'package:geoforestcoletor/services/export_service.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/pages/dashboard/talhao_dashboard_page.dart';
+import 'package:geovigilancia/pages/talhoes/form_talhao_page.dart';
+import 'package:geovigilancia/services/pdf_service.dart';
+import 'package:geovigilancia/models/enums.dart';
+import 'package:geovigilancia/services/analysis_service.dart';
+import 'package:geovigilancia/services/export_service.dart';
 
 // Classe de configuração para o resultado do diálogo
 class PlanoConfig {

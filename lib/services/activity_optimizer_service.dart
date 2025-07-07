@@ -1,7 +1,7 @@
 // lib/services/activity_optimizer_service.dart (NOVO ARQUIVO)
 
 import 'package:flutter/foundation.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
 import 'package:sqflite/sqflite.dart';
 
 class ActivityOptimizerService {

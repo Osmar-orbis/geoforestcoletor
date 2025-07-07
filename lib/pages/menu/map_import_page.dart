@@ -3,13 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geoforestcoletor/models/sample_point.dart';
-import 'package:geoforestcoletor/pages/amostra/coleta_dados_page.dart';
-import 'package:geoforestcoletor/providers/map_provider.dart';
+import 'package:geovigilancia/models/sample_point.dart';
+import 'package:geovigilancia/pages/amostra/coleta_dados_page.dart';
+import 'package:geovigilancia/providers/map_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
 
 class MapImportPage extends StatefulWidget {
   const MapImportPage({super.key});
@@ -265,7 +265,7 @@ class _MapImportPageState extends State<MapImportPage> with RouteAware {
             children: [
               TileLayer(
                   urlTemplate: mapProvider.currentTileUrl,
-                  userAgentPackageName: 'com.example.geoforestcoletor'),
+                  userAgentPackageName: 'com.example.geovigilancia'),
               if (mapProvider.polygons.isNotEmpty)
                 PolygonLayer(polygons: mapProvider.polygons),
               

@@ -2,10 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // <<< IMPORT ADICIONADO
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
-import 'package:geoforestcoletor/models/fazenda_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/atividade_model.dart';
+import 'package:geovigilancia/models/fazenda_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
 
 class PlanoCubagemSelecaoPage extends StatefulWidget {
   final Atividade atividadeDeOrigem;

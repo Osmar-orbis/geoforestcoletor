@@ -8,7 +8,7 @@ import 'package:flutter/material.dart'; // Import necessário para TextStyle
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:geoforestcoletor/models/imported_feature_model.dart';
+import 'package:geovigilancia/models/imported_feature_model.dart';
 
 // Classe de exceção personalizada para nos dar erros claros.
 class GeoJsonParseException implements Exception {

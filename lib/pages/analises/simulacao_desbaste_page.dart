@@ -1,11 +1,11 @@
 // lib/pages/analises/simulacao_desbaste_page.dart (VERSÃO COM EXPORTAÇÃO FUNCIONAL)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/models/arvore_model.dart';
-import 'package:geoforestcoletor/models/parcela_model.dart';
-import 'package:geoforestcoletor/services/analysis_service.dart';
-import 'package:geoforestcoletor/models/analise_result_model.dart';
-import 'package:geoforestcoletor/services/pdf_service.dart'; // <<< 1. IMPORTAR PDF SERVICE
+import 'package:geovigilancia/models/arvore_model.dart';
+import 'package:geovigilancia/models/parcela_model.dart';
+import 'package:geovigilancia/services/analysis_service.dart';
+import 'package:geovigilancia/models/analise_result_model.dart';
+import 'package:geovigilancia/services/pdf_service.dart'; // <<< 1. IMPORTAR PDF SERVICE
 
 class SimulacaoDesbastePage extends StatefulWidget {
   final List<Parcela> parcelas;

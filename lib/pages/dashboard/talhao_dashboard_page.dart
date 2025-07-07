@@ -1,16 +1,16 @@
 // lib/pages/dashboard/talhao_dashboard_page.dart (ARQUIVO COMPLETO E CORRIGIDO)
 
 import 'package:flutter/material.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/arvore_model.dart';
-import 'package:geoforestcoletor/models/parcela_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/services/analysis_service.dart';
-import 'package:geoforestcoletor/services/export_service.dart';
-import 'package:geoforestcoletor/widgets/grafico_distribuicao_widget.dart';
-import 'package:geoforestcoletor/pages/analises/simulacao_desbaste_page.dart';
-import 'package:geoforestcoletor/pages/analises/rendimento_dap_page.dart';
-import 'package:geoforestcoletor/models/analise_result_model.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/arvore_model.dart';
+import 'package:geovigilancia/models/parcela_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/services/analysis_service.dart';
+import 'package:geovigilancia/services/export_service.dart';
+import 'package:geovigilancia/widgets/grafico_distribuicao_widget.dart';
+import 'package:geovigilancia/pages/analises/simulacao_desbaste_page.dart';
+import 'package:geovigilancia/pages/analises/rendimento_dap_page.dart';
+import 'package:geovigilancia/models/analise_result_model.dart';
 
 class TalhaoDashboardPage extends StatelessWidget {
   final Talhao talhao;

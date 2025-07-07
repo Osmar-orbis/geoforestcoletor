@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 // <<< MUDANÇA 1 >>> Import do Slidable
 import 'package:flutter_slidable/flutter_slidable.dart'; 
 import 'package:intl/intl.dart';
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/atividade_model.dart';
-import 'package:geoforestcoletor/models/projeto_model.dart';
-import 'package:geoforestcoletor/pages/projetos/detalhes_projeto_page.dart';
-import 'form_projeto_page.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/atividade_model.dart';
+import 'package:geovigilancia/models/projeto_model.dart';
+import 'package:geovigilancia/pages/projetos/detalhes_projeto_page.dart';
+import 'form_campanha_page.dart';
 
 // <<< MUDANÇA 2 >>> Import do form_projeto_page para reutilização no modo de edição
 

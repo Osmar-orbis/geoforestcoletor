@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 // Importações dos seus arquivos
 import '../../data/datasources/local/database_helper.dart';
 import '../../models/atividade_model.dart';
-import '../../models/projeto_model.dart';
+import '../../models/campanha_model.dart';
 import 'detalhes_atividade_page.dart';
 import 'form_atividade_page.dart';
 

@@ -2,10 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'package:geoforestcoletor/data/datasources/local/database_helper.dart';
-import 'package:geoforestcoletor/models/parcela_model.dart';
-import 'package:geoforestcoletor/models/talhao_model.dart';
-import 'package:geoforestcoletor/pages/amostra/inventario_page.dart';
+import 'package:geovigilancia/data/datasources/local/database_helper.dart';
+import 'package:geovigilancia/models/parcela_model.dart';
+import 'package:geovigilancia/models/talhao_model.dart';
+import 'package:geovigilancia/pages/amostra/inventario_page.dart';
 import 'package:geolocator/geolocator.dart'; // <<< 1. IMPORTA O PACOTE
 
 enum FormaParcela { retangular, circular }

@@ -3,9 +3,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geoforestcoletor/services/auth_service.dart';
-import 'package:geoforestcoletor/pages/menu/register_page.dart';
-import 'package:geoforestcoletor/pages/menu/forgot_password_page.dart';
+import 'package:geovigilancia/services/auth_service.dart';
+import 'package:geovigilancia/pages/menu/register_page.dart';
+import 'package:geovigilancia/pages/menu/forgot_password_page.dart';
 
 const Color primaryColor = Color(0xFF1D4433);
 const Color secondaryTextColor = Color(0xFF617359);
